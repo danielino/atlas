@@ -115,7 +115,7 @@ Global conventions: exit 0 = ok · exit 1 = I/O/parse error · exit 2 = semantic
 - `atlas card supersede <old> <new>` — old→`status: superseded`, `superseded_by: new`; appends event to log.jsonl; the superseded file remains in cards/ but excluded from context. Plan-mutation policy.
 - `atlas show <id> [--json]` — prints the full file (JSON: structured frontmatter + body).
 - `atlas log [--grep pattern] [--json]` — queries log.jsonl (never in the context).
-- `atlas doctor [--json]` — checks: orphaned blocked_by/discovered_from/superseded_by; cycles in blocked_by; done without summary in the log; focus not modified for >N recent commits (freshness, S5.2); expired claims or claims referring to nonexistent workitems (removes them with a note); active cards older than 90 days never touched (warning); malformed frontmatter (tolerant parsing: reports, does not crash). Exit 3 if there are issues.
+- `atlas doctor [--json]` — checks: orphaned blocked_by/discovered_from/superseded_by; cycles in blocked_by; done without summary in the log; **a workitem active in work/ whose id already has a `task done` entry in log.jsonl — "resurrected workitem" (ERROR): a merge from a stale branch brought back a pre-close copy of the file; claims never protect against this, since `git merge` never consults them**; focus not modified for >N recent commits (freshness, S5.2); expired claims or claims referring to nonexistent workitems (removes them with a note); active cards older than 90 days never touched (warning); malformed frontmatter (tolerant parsing: reports, does not crash). Exit 3 if there are issues.
 
 **Plan-mutation policy:** if the current branch is not in `integration_branches`: `warn` (default) → message on stderr, proceeds; `strict` → exit 2 `{"error":"policy","branch":"..."}`. Never applied to: tasks with `--from`, start/block/done transitions, read-only commands.
 
@@ -130,6 +130,7 @@ Global conventions: exit 0 = ok · exit 1 = I/O/parse error · exit 2 = semantic
 - Made a non-obvious decision? `atlas card add --type decision "title" --hook "one-line summary"`.
 - Discovered new work? `atlas task add "title" --from <current-task-id>`.
 - Before ending the session: update task states and, if the goal changed, `.atlas/focus.md`.
+- After merging any branch that touches `.atlas/`: run `atlas doctor` — a merge can bring back a stale, already-closed workitem (claims don't protect against this, only doctor catches it).
 - Use `--json` on read commands. Never edit files under `.atlas/` by hand: use the CLI.
 <!-- atlas:end -->
 ```

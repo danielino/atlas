@@ -71,6 +71,23 @@ func TestInit_BootstrapBlockMentionsSpecs(t *testing.T) {
 	}
 }
 
+func TestInit_BootstrapBlockMentionsDoctorAfterMerge(t *testing.T) {
+	dir := testutil.SetupRepo(t)
+	chdir(t, dir)
+
+	if _, stderr, code := ExecuteCapture([]string{"init"}); code != 0 {
+		t.Fatalf("init failed: %s", stderr)
+	}
+
+	agents, err := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(agents), "atlas doctor") || !strings.Contains(string(agents), "merg") {
+		t.Errorf("expected bootstrap block to recommend `atlas doctor` after merging a branch that touches .atlas/, got:\n%s", agents)
+	}
+}
+
 func TestInit_PatchesExistingCLAUDEmd(t *testing.T) {
 	dir := testutil.SetupRepo(t)
 	claudePath := filepath.Join(dir, "CLAUDE.md")
