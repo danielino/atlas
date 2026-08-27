@@ -4,6 +4,9 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/danielino/atlas/internal/ledger"
+	"github.com/stretchr/testify/require"
 )
 
 // addDecisionCard creates a decision card and returns its id, for tests
@@ -50,6 +53,58 @@ func TestSpecAdd_WithBodyAndEvidence(t *testing.T) {
 	}
 	if !strings.Contains(out, "docs/a.md") || !strings.Contains(out, "docs/b.md") {
 		t.Errorf("expected evidence in output, got: %s", out)
+	}
+}
+
+func TestSpecAdd_NoBody_UsesScaffold(t *testing.T) {
+	root := initRepo(t)
+
+	stdout, _, code := ExecuteCapture([]string{"spec", "add", "A scaffolded spec"})
+	if code != 0 {
+		t.Fatalf("spec add failed")
+	}
+	id := strings.TrimSpace(stdout)
+
+	s, err := ledger.LoadSpec(root, id)
+	if err != nil {
+		t.Fatalf("LoadSpec failed: %v", err)
+	}
+	require.Equal(t, specScaffold, s.Body, "spec body must match the S10.2 scaffold verbatim")
+}
+
+func TestSpecAdd_ExplicitBody_NoScaffold(t *testing.T) {
+	initRepo(t)
+
+	stdout, _, code := ExecuteCapture([]string{"spec", "add", "A hand-written spec", "--body", "just this text"})
+	if code != 0 {
+		t.Fatalf("spec add failed")
+	}
+	id := strings.TrimSpace(stdout)
+
+	out, _, _ := ExecuteCapture([]string{"show", id})
+	if strings.Contains(out, "## Goal") {
+		t.Errorf("expected no scaffold when --body is explicit, got: %s", out)
+	}
+	if !strings.Contains(out, "just this text") {
+		t.Errorf("expected explicit body, got: %s", out)
+	}
+}
+
+func TestSpecAdd_ScaffoldOnly_CannotActivateWithoutDecisions(t *testing.T) {
+	initRepo(t)
+
+	stdout, _, code := ExecuteCapture([]string{"spec", "add", "A scaffolded spec, no decisions"})
+	if code != 0 {
+		t.Fatalf("spec add failed")
+	}
+	id := strings.TrimSpace(stdout)
+
+	stdout, _, code = ExecuteCapture([]string{"spec", "activate", id, "--json"})
+	if code != 2 {
+		t.Fatalf("expected exit 2 activating a scaffold-only spec without decisions, got %d (%s)", code, stdout)
+	}
+	if !strings.Contains(stdout, "spec_without_decision") {
+		t.Errorf("expected spec_without_decision refusal, got: %s", stdout)
 	}
 }
 

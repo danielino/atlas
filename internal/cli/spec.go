@@ -29,6 +29,24 @@ func newSpecCmd() *cobra.Command {
 	return cmd
 }
 
+// specScaffold is the default body for `spec add` when --body is omitted
+// (PLAN.md S10.2): a spec-as-living-document template, distinct from
+// aiops-ai-spec's per-feature template. Never applied when --body is
+// given explicitly, and never re-synced afterward — the body is free text
+// from that point on.
+const specScaffold = `## Goal
+<what this capability must achieve and for whom>
+
+## Constraints
+<hard limits, invariants, and the decisions this spec follows>
+
+## Interfaces
+<contracts, commands, data shapes exposed or consumed>
+
+## Open questions
+<unresolved points — resolve these before activating the spec>
+`
+
 // isDecisionID distinguishes a bare ATLAS id from a repo-relative ADR
 // path in a spec's decisions list (S9.8): ids never contain a path
 // separator or a file extension, while every ADR path in practice does
@@ -123,12 +141,15 @@ func newSpecAddCmd() *cobra.Command {
 			}
 
 			resolvedBody := body
-			if body == "-" {
+			switch {
+			case body == "-":
 				data, err := io.ReadAll(cmd.InOrStdin())
 				if err != nil {
 					return failIO(cmd, useJSON, err)
 				}
 				resolvedBody = string(data)
+			case !cmd.Flags().Changed("body"):
+				resolvedBody = specScaffold
 			}
 
 			id, err := ledger.GenerateID(root, ledger.RandReader)
@@ -154,7 +175,7 @@ func newSpecAddCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&body, "body", "", `spec body; use "-" to read from stdin`)
+	cmd.Flags().StringVar(&body, "body", "", `spec body; use "-" to read from stdin; omit for a default Goal/Constraints/Interfaces/Open questions scaffold`)
 	cmd.Flags().StringVar(&evidence, "evidence", "", "comma-separated evidence paths")
 	cmd.Flags().StringVar(&decisions, "decision", "", "comma-separated decision-card ids or ADR paths this spec follows")
 	addJSONFlag(cmd)

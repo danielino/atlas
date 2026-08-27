@@ -1,0 +1,13 @@
+flowchart TD
+    a1b2["a1b2: root task (doing)"]
+    b1b2["b1b2: second task (todo)"]
+    c1c2["c1c2: third task (todo)"]
+    d1d2["d1d2: fourth task (blocked)"]
+    x1x2["x1x2: cyclic x (todo)"]
+    y1y2["y1y2: cyclic y (todo)"]
+    a1b2 --> b1b2
+    a1b2 --> c1c2
+    b1b2 --> d1d2
+    c1c2 --> d1d2
+    y1y2 --> x1x2
+    x1x2 --> y1y2

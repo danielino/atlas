@@ -239,3 +239,40 @@ Una spec deve seguire una decisione. Modello:
 - Contesto target mode: sotto l'header `## SPEC [id] title`, una riga `Decisions: k9m2, docs/adr/0034-enrichment-stage.md` (non degradabile: è 1 riga).
 - `spec list`: mostra le decisioni collegate.
 - Seed brief e README aggiornati: creare prima la decision card, poi la spec che la referenzia.
+
+## S10. Graph + spec scaffold (fase F7 — eredità utile di aiops-ai-spec, deciso 2026-08-27)
+
+Unici due porting approvati dall'analisi di aiops-ai-spec-manager. Stringhe user-facing in INGLESE.
+
+**S10.1 `atlas graph [--mermaid] [--json]`** — read-only, MAI incluso nel brief di context (comando opt-in per umani). Renderizza il DAG `blocked_by` dei workitem ATTIVI (todo/doing/blocked; i done non esistono più in work/).
+- Default (testo): livelli topologici — livello 0 = nessun blocker attivo, livello N = tutti i blocker in livelli <N. Formato:
+```
+# ATLAS GRAPH
+Level 0 (unblocked, parallelizable):
+- [a1b2] title (doing)
+Level 1:
+- [c3d4] title (todo, blocked by a1b2)
+```
+- Blocker riferiti a id chiusi/inesistenti non bloccano (stessa semantica di READY).
+- Cicli: i nodi coinvolti finiscono in un gruppo finale `Cycle (unresolvable):` con warning su stderr che rimanda a `atlas doctor`; exit 0 (graph mostra, doctor giudica).
+- `--mermaid`: `flowchart TD`, nodi `id["id: title (status)"]`, archi `blocker --> blocked`.
+- `--json`: `{"levels":[[{"id","title","status","blocked_by":[...]}]],"cycles":[...]}`.
+- Niente DOT/Graphviz.
+
+**S10.2 Scaffold di default per `spec add`** — quando `--body` è omesso, il body della spec creata è questo template (riscritto per spec-come-documento-vivente, NON il template per-feature di aiops):
+```markdown
+## Goal
+<what this capability must achieve and for whom>
+
+## Constraints
+<hard limits, invariants, and the decisions this spec follows>
+
+## Interfaces
+<contracts, commands, data shapes exposed or consumed>
+
+## Open questions
+<unresolved points — resolve these before activating the spec>
+```
+Con `--body` esplicito il template non viene usato. Nessuna sync automatica del body: resta testo libero editabile.
+
+**S10.3 Test obbligatori (S7 vale):** livelli topologici multi-livello; blocker chiusi non bloccano; ciclo → gruppo Cycle + warning stderr + exit 0; golden per testo e mermaid; `--json` shape; scaffold presente senza `--body` e assente con `--body`; attivazione di una spec col solo scaffold resta soggetta a S9.8 (decisions obbligatorie). README aggiornato (graph nel command table, scaffold menzionato in spec add).

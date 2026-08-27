@@ -1,0 +1,11 @@
+# ATLAS GRAPH
+Level 0 (unblocked, parallelizable):
+- [a1b2] root task (doing)
+Level 1:
+- [b1b2] second task (todo, blocked by a1b2)
+- [c1c2] third task (todo, blocked by a1b2)
+Level 2:
+- [d1d2] fourth task (blocked, blocked by b1b2, c1c2)
+Cycle (unresolvable):
+- [x1x2] cyclic x (todo)
+- [y1y2] cyclic y (todo)

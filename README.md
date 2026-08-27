@@ -112,7 +112,7 @@ current directory looking for a `.atlas/` directory.
 | `atlas task done <id> --summary text` | Close a workitem: `--summary` is required and non-empty, appends to `log.jsonl`, removes the file from `work/`, releases the claim. |
 | `atlas card add --type decision\|knowledge <title> [--hook text] [--body text] [--evidence p1,p2]` | Create a decision/knowledge card. `--hook` defaults to the title. Subject to plan-mutation policy. |
 | `atlas card supersede <old-id> <new-id>` | Mark an old card `superseded`, pointing at the new one; appends to `log.jsonl`. Subject to plan-mutation policy. |
-| `atlas spec add <title> [--body -\|text] [--evidence p1,p2] [--decision id-or-path,...]` | Create a draft spec. Subject to plan-mutation policy. |
+| `atlas spec add <title> [--body -\|text] [--evidence p1,p2] [--decision id-or-path,...]` | Create a draft spec. Subject to plan-mutation policy. Omit `--body` to start from a default Goal/Constraints/Interfaces/Open questions scaffold instead of an empty document. |
 | `atlas spec activate <id>` | Draft → active. Idempotent if already active. Requires at least one `--decision` entry (exit 2 `spec_without_decision` otherwise); refused (exit 2) if superseded, or if a linked decision card is superseded. Subject to plan-mutation policy. |
 | `atlas spec update <id> [--title t] [--body -\|text] [--evidence ...] [--decision ...]` | Update a spec in place (`--decision` replaces the list). `--body -` reads from stdin. Refused (exit 2) on a superseded spec. Subject to plan-mutation policy. |
 | `atlas spec supersede <old-id> <new-id>` | Mark an old spec `superseded`, pointing at the new one; appends a `kind:"spec"` event to `log.jsonl`. Subject to plan-mutation policy. |
@@ -120,6 +120,7 @@ current directory looking for a `.atlas/` directory.
 | `atlas show <id> [--json]` | Print a workitem, card, or spec in full (frontmatter + body). |
 | `atlas log [--grep pattern] [--json]` | Query the closed-item log (`log.jsonl`); never included in context. |
 | `atlas doctor [--json]` | Run integrity checks over the ledger; see below. |
+| `atlas graph [--mermaid\|--json]` | Read-only view of the `blocked_by` dependency graph over active workitems, as topological levels (default text), a mermaid `flowchart TD`, or JSON. Never included in `atlas context`. Unresolvable cycles are shown in a trailing group with a stderr warning; exit is always 0 (judging a cycle an error is `atlas doctor`'s job). |
 
 ## `.atlas/` file layout
 
