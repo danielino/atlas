@@ -65,19 +65,24 @@ automatic. If the mental model breaks, ATLAS breaks with it.
 
 ### The Real Problem ATLAS Solves
 
-At the start of every coding session, a coding agent pays a **reconstruction tax**:
+At the start of every coding session, a coding agent **cannot hold persistent memory** — it's a stateless
+LLM instance with a fresh context window. So it has to reconstruct the project state from scratch:
 
 1. Read 2,000-line TODO.md files to extract 50 lines of relevance.
 2. Search through git log to find when decisions were made.
 3. Reconstruct project phase from ADRs, old specs, and implicit conventions.
 4. Re-read code to confirm what the README actually means.
-5. Load all of that *again* on the next request, because the agent can't hold context across compaction.
+5. Load all of that *again* on the next request, because the LLM's context is ephemeral — there's no "remember last session".
 
-This tax **grows with project age, not project size**. A 5-year-old repo with steady churn is worst.
+**The agent already knows all of this.** It completed tasks, merged code, made decisions. But the LLM
+instance that starts the *next* session is a fresh context, so it re-reads everything. This tax
+**grows with project age, not project size**. A 5-year-old repo with steady churn is worst.
+
 Measured across 8 sessions in production codebases: first action taken after 13 requests (median),
-with ~66.6k tokens of context already spent reconstructing state — and that state was re-read an
-average of 1.4M tokens across the session due to compaction. **Every token of reconstruction is
-paid twice: once at read, once at cache-reload.**
+with ~66.6k tokens of context already spent reconstructing state it had already figured out — and
+that state was re-read an average of 1.4M tokens across the session due to compaction. **Every token
+of reconstruction is paid multiple times: once per new session, plus during cache compaction within
+the session.**
 
 The gap: **no existing tool answers "what is the current state of this project?" in O(1) time**. GitHub
 issues answer "what work is open?" (incomplete — no phase, no decisions, no intent). Beads answers
@@ -99,7 +104,9 @@ ATLAS provides **one deterministic command** — `atlas context` — that answer
 - **POINTERS** (2 lines): How to dig deeper.
 
 All of that is **~1,500 tokens** in the common case, vs. the ~50k tokens the agent was burning to reconstruct it.
-**The ledger is small enough to fit in cache**, so it can be included in every request. The brief is made of
+**Every new session, the LLM starts with the same 1.5k-token brief**, not 50k of historical noise. This
+resets the "first action" from the 13th request (after 66k tokens spent) to request 1 or 2. The ledger is
+small enough to fit in cache and stay there, so it can be included in every request. The brief is made of
 **pointers and summaries, never full dumps** — the agent reads the code just-in-time, which it's good at.
 
 **But here's the honest part:** ATLAS solves a *multiplier problem*, not the problem of coding itself.
