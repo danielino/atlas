@@ -114,21 +114,31 @@ main failure mode is **behavioral, not technical**: keeping the ledger fresh cos
 of not having it, but requires discipline. `atlas doctor` detects the staleness; only humans and agents
 can fix it.
 
-### Why This is Still Worth Building
+### When ATLAS Matters (And When It Doesn't)
 
-The reconstruction tax is real, measured, and eliminates itself at scale. **For a production codebase
-with steady churn, 10–25% reduction in per-session cost is conservative.** For LLM providers and users
-paying per token, that's material. For teams running agents in parallel, the state clarity alone
-(knowing what's already claimed, what's blocked, why) is worth the ~5 minutes of setup. And for the
-human looking at a project after a week off, `atlas context` is the difference between feeling lost
-and feeling oriented.
+The reconstruction tax is real and measured. But its cost scales unevenly:
 
-The tool is minimal enough — no server, no daemon, ~500 lines of CLI code, plain files in git — that
-the cost of trying it is a one-line `atlas init` and a few entries in a file.
+**You don't need ATLAS if:**
+- Your team is small and synchronous (you talk every day; state is implicit).
+- Your project is under 6–12 months old and hasn't accumulated 1,000+ commits yet.
+- You spawn agents episodically for isolated tasks, not continuously for ongoing work.
+- You have a single focused work stream (one feature, one phase) and rarely context-switch.
+- Your team doesn't use agents at all (ATLAS is designed for agent + human handoff).
 
-Whether it's worth *not building* is also fair. If you're on a small team, working synchronously,
-with a project that never ages, or with agents that somehow stay oriented without it — you don't need
-ATLAS. Honest answer: **most projects don't**. The ones that do know they do.
+**ATLAS starts paying for itself when:**
+- Your codebase is 1–2+ years old with steady churn and historical baggage.
+- Multiple agents work in parallel on different branches, and you need to know who owns what.
+- You have 5+ active decisions/constraints that shape new work.
+- Agents make decisions that older team members might not immediately recognize (onboarding cost).
+- You measure per-session cost in dollars, not hours — the 10–25% reduction in context burn is material.
+
+For projects in the second category, `atlas context` replaces 30–60 minutes of manual state assembly with
+~1 minute and ~1,500 tokens. The tool is minimal enough — no server, no daemon, ~500 lines of CLI code,
+plain files in git — that the friction of trying it is one-line `atlas init`.
+
+**The honest take:** If you're not feeling the reconstruction tax yet, you won't feel ATLAS either. The
+ones that need it know it from the moment they try `atlas context` on their real codebase and see their
+reconstruction logic compressed into 1 minute and a brief that actually fits in the cache window.
 
 ---
 
