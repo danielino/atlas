@@ -1,0 +1,7 @@
+# ATLAS CONTEXT (2026-08-27)
+## FOCUS
+Working outside git; ledger only.
+## NOW
+- [a1b2] Draft ledger schema (doing)
+## POINTERS
+Dettaglio: `atlas show <id>` · Stato completo: `atlas state` · Storia: `atlas log --grep <x>`

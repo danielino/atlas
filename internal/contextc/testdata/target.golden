@@ -1,0 +1,22 @@
+# ATLAS CONTEXT (2026-08-27)
+## FOCUS
+Ship F3.
+## TASK
+---
+id: a1b2
+title: Fix container reconcile retry
+status: doing
+created: "2026-08-27"
+branch: feature/retry
+evidence:
+    - packages/core/pipeline/reconcile.py:120-180
+summary: ""
+---
+Investigate retry backoff and reconcile loop.
+Related decision: see k9m2 for claim strategy.
+## RULES
+- [k9m2] Claim = file O_EXCL in $GIT_COMMON_DIR, mai mutex (decision)
+## GROUND
+branch: feature/retry · HEAD: 9f8e7d6 · worktree: clean
+## POINTERS
+Dettaglio: `atlas show <id>` · Stato completo: `atlas state` · Storia: `atlas log --grep <x>`

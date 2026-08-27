@@ -1,0 +1,17 @@
+# ATLAS CONTEXT (2026-08-27)
+## FOCUS
+Drive the budget ladder down through every step.
+## NOW
+- [a1b2] Keep NOW populated so it is never removed (doing, branch feature/context)
+## READY
+- [0000] Add doctor integrity checks for orphaned blocked_by references
+- [1000] Wire cobra command surface for task lifecycle transitions
+… (+3 altri: atlas state)
+## RULES
+- [k9m2] Claims live under the git common directory, never inside the
+- [p1q2] Superseded cards stay on disk for history but are excluded f
+- [r3s4] Frontmatter parsing is always tolerant: a malformed block is
+## GROUND
+branch: feature/context · HEAD: 9f8e7d6 · worktree: clean
+## POINTERS
+Dettaglio: `atlas show <id>` · Stato completo: `atlas state` · Storia: `atlas log --grep <x>`

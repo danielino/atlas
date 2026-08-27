@@ -1,0 +1,18 @@
+# ATLAS CONTEXT (2026-08-27)
+## FOCUS
+Ship F3: state derivation + budgeted context compiler, golden-tested.
+Keep CLI/doctor out of scope until F4/F5.
+## NOW
+- [a1b2] Implement budget degradation ladder (doing, branch feature/context) — evidence: internal/contextc/contextc.go
+- [c3d4] Wire claims into Ground.Elsewhere (blocked on e5f6: waiting on gitx CommonDir behavior under worktrees)
+## READY
+- [f6a7] Add doctor integrity checks
+## RULES
+- [k9m2] Claim = file O_EXCL in $GIT_COMMON_DIR, mai mutex (decision)
+## RECENT
+- [b2c3] Added Branch/HeadShort/IsDirty/RecentCommits (2026-08-25)
+- git: 9f8e7d6 feat(gitx,claims): git wrapper and atomic claims, 1a2b3c4 feat(ledger): core data model with TDD
+## GROUND
+branch: feature/context · HEAD: 9f8e7d6 · worktree: dirty(2 files) · elsewhere: [d4e5 su feature/other]
+## POINTERS
+Dettaglio: `atlas show <id>` · Stato completo: `atlas state` · Storia: `atlas log --grep <x>`

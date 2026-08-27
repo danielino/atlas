@@ -1,0 +1,5 @@
+# ATLAS CONTEXT (2026-08-27) [STALE: ledger older than last 5 commits]
+## FOCUS
+Investigate why HEAD moved without ledger updates.
+## POINTERS
+Dettaglio: `atlas show <id>` · Stato completo: `atlas state` · Storia: `atlas log --grep <x>`

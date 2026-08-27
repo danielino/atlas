@@ -1,0 +1,63 @@
+{
+  "generated": "2026-08-27T09:00:00Z",
+  "stale": false,
+  "focus": "Ship F3: state derivation + budgeted context compiler, golden-tested.\nKeep CLI/doctor out of scope until F4/F5.",
+  "now": [
+    {
+      "id": "a1b2",
+      "title": "Implement budget degradation ladder",
+      "status": "doing",
+      "branch": "feature/context",
+      "evidence": [
+        "internal/contextc/contextc.go"
+      ]
+    },
+    {
+      "id": "c3d4",
+      "title": "Wire claims into Ground.Elsewhere",
+      "status": "blocked",
+      "blocked_by": [
+        "e5f6"
+      ],
+      "reason": "waiting on gitx CommonDir behavior under worktrees"
+    }
+  ],
+  "ready": [
+    {
+      "id": "f6a7",
+      "title": "Add doctor integrity checks",
+      "status": "todo"
+    }
+  ],
+  "rules": [
+    {
+      "id": "k9m2",
+      "hook": "Claim = file O_EXCL in $GIT_COMMON_DIR, mai mutex",
+      "type": "decision"
+    }
+  ],
+  "recent": [
+    {
+      "id": "b2c3",
+      "kind": "task",
+      "title": "Implement gitx wrapper",
+      "summary": "Added Branch/HeadShort/IsDirty/RecentCommits",
+      "closed": "2026-08-25T10:00:00Z"
+    }
+  ],
+  "ground": {
+    "branch": "feature/context",
+    "head": "9f8e7d6",
+    "dirty": true,
+    "elsewhere": [
+      {
+        "id": "d4e5",
+        "branch": "feature/other"
+      }
+    ]
+  },
+  "budget": {
+    "limit": 1500,
+    "estimated": 230
+  }
+}
