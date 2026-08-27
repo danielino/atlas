@@ -47,7 +47,7 @@ type Ground struct {
 	Elsewhere  []ElsewhereClaim
 }
 
-// SpecSummary is a draft or active spec (PLAN.md S9) plus its open-task
+// SpecSummary is a draft or active spec (SPEC.md S9) plus its open-task
 // count, exposed in State for the context brief's SPECS section and for
 // `atlas state`. Superseded specs are never included: they are excluded
 // from the ledger's "current" view just like superseded cards.

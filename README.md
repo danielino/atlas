@@ -57,18 +57,18 @@ ATLAS is not a memory/retrieval system: no embeddings, no knowledge graph, no
 automatic fact extraction — relevance is whatever you put in the ledger. Not a
 spec-driven workflow: specs are optional, attached to workitems, never a gate.
 Not an issue tracker: no assignees, sprints or boards; it coexists with one by
-reference. Not documentation: it indexes `docs/` and ADRs (ANALYSIS.md §4).
+reference. Not documentation: it indexes `docs/` and ADRs (docs/ANALYSIS.md §4).
 
 A coding agent starts every session as a fresh context, so it rebuilds
 project state by re-reading TODO files, git log, old specs and conventions —
 then pays that reading again after each compaction. Across 8 measured Claude
 Code sessions (5 with ≥30 requests): median first productive action at request
 13, range 1–27, ~66.6k tokens already spent reconstructing state an earlier
-session had established (ANALYSIS.md §17.7).
+session had established (docs/ANALYSIS.md §17.7).
 
 No tool answers "what is the state of this project?" in O(1). Issues and Beads
 answer what work is open or ready, Spec Kit what we are building, ADRs why,
-CLAUDE.md what the rules are — each one piece, none the brief (ANALYSIS.md §3).
+CLAUDE.md what the rules are — each one piece, none the brief (docs/ANALYSIS.md §3).
 
 `atlas context` returns that brief: eight fixed sections — FOCUS, NOW, READY,
 RULES, SPECS, RECENT, GROUND, POINTERS — one line per item, summaries and
@@ -80,7 +80,7 @@ additionally includes that task's linked spec in full, if it has one.
 The main failure mode is behavioral. If nobody writes back, the ledger goes
 stale. ATLAS detects staleness against git and always declares it, and
 deliberately does not infer state from diffs: wrong state presented as fact is
-worse than declared staleness (ANALYSIS.md §13.1) — a human or agent closes
+worse than declared staleness (docs/ANALYSIS.md §13.1) — a human or agent closes
 the loop.
 
 Checkable on your own repo — if none of these holds, you are not paying the tax:
@@ -90,7 +90,7 @@ Checkable on your own repo — if none of these holds, you are not paying the ta
 - [ ] More than one agent or branch in flight, with ownership not obvious
 - [ ] Standing decisions that constrain new work but live only in git history
 
-Ecosystem analysis and measurement protocol: ANALYSIS.md §3, §4, §13.1, §17.7.
+Ecosystem analysis and measurement protocol: docs/ANALYSIS.md §3, §4, §13.1, §17.7.
 
 ---
 

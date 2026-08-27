@@ -1,4 +1,4 @@
-// Package contextc compiles the budgeted "ATLAS CONTEXT" brief (PLAN.md
+// Package contextc compiles the budgeted "ATLAS CONTEXT" brief (SPEC.md
 // S5) from a derived internal/state.State: a token-budgeted plain-text
 // rendering (Render), an equivalent JSON rendering (RenderJSON), and a
 // workitem-centered rendering (RenderTarget) for `atlas context <id>`.
@@ -22,7 +22,7 @@ func EstimateTokens(s string) int {
 }
 
 // stalenessTag is the exact header suffix appended when the ledger is
-// stale, for state.FreshnessN == 5 (PLAN.md S5.1/S5.2).
+// stale, for state.FreshnessN == 5 (SPEC.md S5.1/S5.2).
 const stalenessTag = " [STALE: ledger older than last 5 commits]"
 
 // pointersLine is the fixed POINTERS footer (S5.1), verbatim.
@@ -103,7 +103,7 @@ func Render(s state.State, cfg ledger.Config, now func() time.Time) string {
 
 // writeSection appends sec (a "## HEADER\n...\n"-shaped section, or ""
 // for an omitted one) directly after whatever came before, with no blank
-// line in between: PLAN.md S5.1's example shows sections running back to
+// line in between: SPEC.md S5.1's example shows sections running back to
 // back, never separated by a blank line.
 func writeSection(b *strings.Builder, sec string) {
 	b.WriteString(sec)

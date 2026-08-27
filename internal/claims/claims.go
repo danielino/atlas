@@ -1,5 +1,5 @@
 // Package claims implements the per-workitem claim mechanism described in
-// PLAN.md S1: an atomic, filesystem-based lock stored outside the versioned
+// SPEC.md S1: an atomic, filesystem-based lock stored outside the versioned
 // repo (under the git common directory), so that a task cannot be started
 // concurrently by two branches/sessions. Acquisition uses exclusive file
 // creation (O_CREATE|O_EXCL) — never a mutex — so it is safe across
@@ -124,7 +124,7 @@ func (m *Manager) readClaim(id string) (Claim, error) {
 // the filesystem level and only one can win, AND no reader ever observes
 // a partially-written claim file.
 //
-// DEVIATION from PLAN.md S0/S1 ("creazione esclusiva con
+// DEVIATION from SPEC.md S0/S1 ("exclusive creation with
 // os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)"): a plain
 // O_CREATE|O_EXCL creates the (empty) file atomically, but writing its
 // content is a separate step — a concurrent Get/List/Acquire can observe

@@ -8,7 +8,7 @@ import (
 )
 
 // seedBrief is the constant curation brief printed by `atlas seed`
-// (PLAN.md S4). atlas never calls an LLM itself: this text is read by
+// (SPEC.md S4). atlas never calls an LLM itself: this text is read by
 // the human's coding agent, which does the actual triage using ordinary
 // `atlas task add` / `atlas card add` / focus-file edits.
 const seedBrief = `ATLAS SEED — curate this repository into the ATLAS ledger

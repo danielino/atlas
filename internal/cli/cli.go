@@ -1,4 +1,4 @@
-// Package cli implements the ATLAS command surface (PLAN.md S2): cobra
+// Package cli implements the ATLAS command surface (SPEC.md S2): cobra
 // wiring for every command including `doctor`, the exit-code convention,
 // JSON error shapes for semantic refusals, root discovery, and the
 // plan-mutation policy check.
@@ -57,7 +57,7 @@ func NewRootCmd() *cobra.Command {
 }
 
 // Execute runs atlas with args, sending command output to stdout/stderr,
-// and returns the process exit code per PLAN.md S2 (0 ok, 1 I/O or parse
+// and returns the process exit code per SPEC.md S2 (0 ok, 1 I/O or parse
 // error, 2 semantic refusal). It never panics and never calls os.Exit
 // itself, so it is safe to call from tests.
 func Execute(args []string, stdout, stderr io.Writer) int {
@@ -201,7 +201,7 @@ func currentBranch(root string) string {
 	return b
 }
 
-// checkPolicy implements PLAN.md S2's plan-mutation policy: if the
+// checkPolicy implements SPEC.md S2's plan-mutation policy: if the
 // current branch is not among cfg.Policy.IntegrationBranches, a
 // plan-mutating command (task add without --from, card add, card
 // supersede) either warns on stderr and proceeds ("warn", default) or is

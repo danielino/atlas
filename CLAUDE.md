@@ -6,12 +6,16 @@ working ON the codebase.
 
 ## Binding documents
 
-- **`PLAN.md` is the binding implementation spec** (sections S0–S10: data model,
-  command semantics, exit codes, JSON shapes, context format, test rules).
-  When code and PLAN.md disagree, one of them is a bug — fix deliberately, never
-  silently drift. `ANALYSIS.md` is the architecture/discovery record (rationale,
-  product boundaries, rejected alternatives). Both are written in Italian by
-  design; code, comments, docs and ALL user-facing CLI output are English-only.
+- **`docs/SPEC.md` is the binding implementation spec** (sections S0–S10: data
+  model, command semantics, exit codes, JSON shapes, context format, test
+  rules). When code and SPEC.md disagree, one of them is a bug — fix
+  deliberately, never silently drift. `docs/ANALYSIS.md` is the
+  architecture/discovery record (rationale, product boundaries, rejected
+  alternatives). Both are English-only, like all code, comments, docs and CLI
+  output in this repo — no exceptions. Code comments referencing "SPEC.md
+  S<n>" cite the document by name/section, not by path — they don't need
+  updating when the file moves. Decisions promoted out of ANALYSIS.md live as
+  ADRs under `docs/adr/` (MADR-style frontmatter: status, date).
 
 ## Layout
 
@@ -47,7 +51,7 @@ internal/testutil/  SetupRepo/SetupWorktree (temp git repos for tests)
 
 - Golden tests live in `internal/contextc/testdata/` and `internal/cli/testdata/`
   (`-update` / `-update-graph-golden` flags regenerate). Hand-check regenerated
-  goldens against PLAN.md wording — goldens validate the spec, not the code.
+  goldens against docs/SPEC.md wording — goldens validate the spec, not the code.
 - Tests are deterministic: inject `Now func() time.Time` (contextc, claims,
   doctor, state options); never call wall-clock in assertions; git tests use
   `testutil.SetupRepo` temp repos only, no network.

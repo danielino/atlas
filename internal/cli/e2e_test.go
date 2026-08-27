@@ -10,7 +10,7 @@ import (
 // TestE2E_FullLifecycleThenDoctorCatchesCorruption exercises the whole
 // command surface end to end in one temp repo, then deliberately
 // corrupts the ledger and checks that `atlas doctor` reports it (F5,
-// PLAN.md S8).
+// SPEC.md S8).
 func TestE2E_FullLifecycleThenDoctorCatchesCorruption(t *testing.T) {
 	dir := initRepo(t)
 

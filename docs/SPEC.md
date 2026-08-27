@@ -1,61 +1,61 @@
-# ATLAS — Piano di implementazione
+# ATLAS — Implementation Specification
 
-**Riferimento architetturale:** ANALYSIS.md (vincolante — in caso di dubbio, ANALYSIS.md decide)
-**Linguaggio:** Go (binario statico) · **Git:** subprocess del `git` di sistema
-**Metodo:** TDD rigoroso (test prima del codice, red → green → refactor) · **Coverage minima: 70%** (totale, `go tool cover -func`)
-**Branching:** tutto su `main`, commit convenzionali per fase, NESSUNA attribuzione Claude nei commit.
-**Scope:** oltre l'MVP — tutte le funzionalità di Fase 1 di ANALYSIS.md §15 più doctor completo, log query, policy, claims.
+**Architectural reference:** ANALYSIS.md (binding — in case of doubt, ANALYSIS.md decides)
+**Language:** Go (static binary) · **Git:** subprocess of the system `git`
+**Method:** rigorous TDD (tests before code, red → green → refactor) · **Minimum coverage: 70%** (total, `go tool cover -func`)
+**Branching:** everything on `main`, conventional commits per phase, NO Claude attribution in commits.
+**Scope:** beyond the MVP — all Phase 1 features from ANALYSIS.md §15 plus full doctor, log query, policy, claims.
 
 ---
 
-## S0. Struttura del progetto
+## S0. Project structure
 
 ```
 go.mod                        # module github.com/danielino/atlas
 cmd/atlas/main.go             # entrypoint, exit code handling
 internal/ledger/              # id, frontmatter codec, workitem, card, focus, log.jsonl, config
-internal/gitx/                # wrapper subprocess git
+internal/gitx/                # git subprocess wrapper
 internal/claims/              # claim-per-file, O_EXCL, TTL, steal
-internal/state/               # stato derivato: ready, freshness
-internal/contextc/            # compilatore del brief (testo + JSON, budget)
-internal/doctor/              # verifiche di integrità
-internal/cli/                 # comandi cobra, wiring, policy, bootstrap, seed
+internal/state/               # derived state: ready, freshness
+internal/contextc/            # brief compiler (text + JSON, budget)
+internal/doctor/              # integrity checks
+internal/cli/                 # cobra commands, wiring, policy, bootstrap, seed
 ```
 
-Dipendenze ammesse: `spf13/cobra`, `gopkg.in/yaml.v3`, `github.com/BurntSushi/toml`, `github.com/stretchr/testify`. Nient'altro.
+Allowed dependencies: `spf13/cobra`, `gopkg.in/yaml.v3`, `github.com/BurntSushi/toml`, `github.com/stretchr/testify`. Nothing else.
 
-Portabilità: `path/filepath` ovunque; creazione esclusiva con `os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)` (portabile: POSIX O_EXCL / Windows CREATE_NEW).
+Portability: `path/filepath` everywhere; exclusive creation with `os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)` (portable: POSIX O_EXCL / Windows CREATE_NEW).
 
-## S1. Modello dati su disco (`.atlas/`)
+## S1. On-disk data model (`.atlas/`)
 
 ```
 .atlas/
-  focus.md            # markdown puro, 3-10 righe, nessun frontmatter
-  work/<id>-<slug>.md # un workitem attivo per file
+  focus.md            # plain markdown, 3-10 lines, no frontmatter
+  work/<id>-<slug>.md # one active workitem per file
   cards/<id>-<slug>.md
-  log.jsonl           # append-only, elementi chiusi
-  config.toml         # opzionale, default sensati se assente
+  log.jsonl           # append-only, closed items
+  config.toml         # optional, sensible defaults if absent
 ```
 
-**ID:** 4 caratteri hex lowercase, generati random, ricontrollati contro collisioni con i file esistenti (work/, cards/ e log.jsonl); alla collisione rigenera (max 20 tentativi, poi 5 caratteri).
-**Slug:** dal titolo, lowercase, `[a-z0-9-]`, max 40 char.
+**ID:** 4 lowercase hex characters, randomly generated, checked against existing files (work/, cards/ and log.jsonl) for collisions; on collision regenerate (max 20 attempts, then 5 characters).
+**Slug:** from the title, lowercase, `[a-z0-9-]`, max 40 chars.
 
-**Workitem** (frontmatter YAML + corpo markdown):
+**Workitem** (YAML frontmatter + markdown body):
 ```markdown
 ---
 id: a1b2
 title: Fix container reconcile retry
 status: todo            # todo | doing | blocked | done
 created: 2026-08-27
-blocked_by: [c3d4]      # opzionale
-discovered_from: e5f6   # opzionale
-branch: feature/retry   # impostato da `task start`
-evidence:               # opzionale, lista di path (con :righe opzionali)
+blocked_by: [c3d4]      # optional
+discovered_from: e5f6   # optional
+branch: feature/retry   # set by `task start`
+evidence:               # optional, list of paths (with optional :lines)
   - packages/core/pipeline/reconcile.py:120-180
-summary: ""             # obbligatoria a done, 1 riga
-reason: ""              # opzionale, motivo del blocco
+summary: ""             # required at done, 1 line
+reason: ""              # optional, reason for the block
 ---
-Corpo markdown libero (intento, note, spec).
+Free markdown body (intent, notes, spec).
 ```
 
 **Card:**
@@ -63,23 +63,23 @@ Corpo markdown libero (intento, note, spec).
 ---
 id: k9m2
 type: decision          # decision | knowledge
-title: Usare O_EXCL per i claim
+title: Use O_EXCL for claims
 status: active          # active | superseded
-superseded_by: ""       # id, per le decision superate
-hook: "Claim = file O_EXCL in $GIT_COMMON_DIR, mai mutex"  # 1 riga per l'indice, OBBLIGATORIO
+superseded_by: ""       # id, for superseded decisions
+hook: "Claim = O_EXCL file in $GIT_COMMON_DIR, never mutex"  # 1 line for the index, REQUIRED
 created: 2026-08-27
 evidence: []
 ---
-Corpo (per le decision: contesto/decisione/conseguenze, compatibile MADR).
+Body (for decisions: context/decision/consequences, MADR-compatible).
 ```
 
-**log.jsonl** (una riga per elemento chiuso):
+**log.jsonl** (one line per closed item):
 ```json
 {"id":"a1b2","kind":"task","title":"...","summary":"...","closed":"2026-08-27T10:00:00Z","commit":"<HEAD short>","branch":"feature/retry"}
 ```
-Per le card superate: `"kind":"card","superseded_by":"x1y2"`.
+For superseded cards: `"kind":"card","superseded_by":"x1y2"`.
 
-**config.toml** (tutti opzionali, questi i default):
+**config.toml** (all optional, these are the defaults):
 ```toml
 [context]
 budget_tokens = 1500
@@ -93,33 +93,33 @@ integration_branches = ["main", "develop"]
 ttl_hours = 24
 ```
 
-**Claims** (fuori dal repo versionato): `<git-common-dir>/atlas/claims/<id>.json`
+**Claims** (outside the versioned repo): `<git-common-dir>/atlas/claims/<id>.json`
 ```json
-{"id":"a1b2","branch":"feature/retry","session":"<ATLAS_SESSION o hostname-pid>","created":"2026-08-27T10:00:00Z","ttl_hours":24}
+{"id":"a1b2","branch":"feature/retry","session":"<ATLAS_SESSION or hostname-pid>","created":"2026-08-27T10:00:00Z","ttl_hours":24}
 ```
-Acquisizione = creazione esclusiva atomica. Claim scaduto (created+ttl < now) = trattato come inesistente (sovrascrivibile con remove+retry create). Rilascio = delete a `done`. `--steal` = delete + create con warning su stderr.
+Acquisition = atomic exclusive creation. Expired claim (created+ttl < now) = treated as nonexistent (overwritable with remove+retry create). Release = delete at `done`. `--steal` = delete + create with a warning on stderr.
 
-## S2. Semantica dei comandi
+## S2. Command semantics
 
-Convenzioni globali: exit 0 = ok · exit 1 = errore I/O/parse · exit 2 = rifiuto semantico (claimed, policy strict, summary mancante, id inesistente) · exit 3 = solo `doctor` con problemi. Ogni comando di lettura e ogni rifiuto supportano `--json`. Errori JSON: `{"error":"<code>", ...campi utili...}`. Tutti i comandi localizzano la root del repo (dir con `.atlas/`, risalendo) tranne `init`.
+Global conventions: exit 0 = ok · exit 1 = I/O/parse error · exit 2 = semantic refusal (claimed, strict policy, missing summary, nonexistent id) · exit 3 = only `doctor` with issues. Every read command and every refusal support `--json`. JSON errors: `{"error":"<code>", ...useful fields...}`. All commands locate the repo root (dir with `.atlas/`, walking up) except `init`.
 
-- `atlas init` — crea `.atlas/focus.md` (template commentato) e `config.toml` coi default; aggiunge `.atlas/log.jsonl merge=union` a `.gitattributes`; installa il blocco bootstrap (S3) in AGENTS.md (append o creazione) e, se esiste CLAUDE.md, anche lì. Idempotente: blocchi delimitati `<!-- atlas:begin -->/<!-- atlas:end -->` sostituiti in place al re-run. Non tocca mai contenuto fuori dai marker.
-- `atlas seed` — stampa su stdout il brief di curation (S4). Nessuna chiamata LLM. `--json` = `{"brief":"..."}`.
-- `atlas context [id] [--json]` — compila il brief (S5). Con `id`: brief centrato (corpo integrale del workitem + card collegate via evidence/menzione id + suoi path). Include sempre freshness e claims attivi di altri branch ("in corso altrove").
-- `atlas state [--json]` — vista completa leggibile: focus, tutti i workitem per stato, card attive con hook, ground git, freshness. Senza budget.
-- `atlas task add "titolo" [--body -|"testo"] [--blocked-by id,id] [--from id] [--evidence p1,p2]` — crea workitem `todo`. Soggetto a policy plan-mutation SOLO se senza `--from` (il lavoro scoperto è sempre permesso).
-- `atlas task start <id> [--steal]` — verifica claim (S1); crea claim; imposta `status: doing`, `branch: <corrente>`. Se già claimed da altro branch/sessione attiva: exit 2 con `{"error":"claimed","task":"..","by":"<branch>","ready":[...]}`. Se il workitem ha `branch` di un altro branch e status doing (binding versionato, macchine diverse): stesso rifiuto salvo `--steal`.
-- `atlas task block <id> [--on id] [--reason "..."]` — `status: blocked`, aggiorna blocked_by/reason. Permesso solo dal branch che lo possiede (o se non ancora posseduto).
-- `atlas task done <id> --summary "..."` — summary OBBLIGATORIA non vuota (exit 2 altrimenti); appende a log.jsonl (con HEAD short e branch), rimuove il file da work/, rilascia il claim. Permesso solo dal branch proprietario (o senza proprietario).
-- `atlas card add --type decision|knowledge "titolo" [--hook "..."] [--body ...] [--evidence ...]` — hook obbligatorio (se assente usa il titolo). Soggetto a policy plan-mutation.
-- `atlas card supersede <vecchio> <nuovo>` — vecchio→`status: superseded`, `superseded_by: nuovo`; appende evento a log.jsonl; il file superseded resta in cards/ ma escluso dal contesto. Policy plan-mutation.
-- `atlas show <id> [--json]` — stampa il file integrale (JSON: frontmatter strutturato + body).
-- `atlas log [--grep pattern] [--json]` — interroga log.jsonl (mai nel contesto).
-- `atlas doctor [--json]` — verifica: blocked_by/discovered_from/superseded_by orfani; cicli in blocked_by; done senza summary nel log; focus non modificato da >N commit recenti (freshness, S5.2); claim scaduti o riferiti a workitem inesistenti (li rimuove con nota); card active più vecchie di 90 giorni mai toccate (warning); frontmatter malformati (parsing tollerante: segnala, non crasha). Exit 3 se problemi.
+- `atlas init` — creates `.atlas/focus.md` (commented template) and `config.toml` with defaults; adds `.atlas/log.jsonl merge=union` to `.gitattributes`; installs the bootstrap block (S3) in AGENTS.md (append or creation) and, if CLAUDE.md exists, there too. Idempotent: blocks delimited by `<!-- atlas:begin -->/<!-- atlas:end -->` replaced in place on re-run. Never touches content outside the markers.
+- `atlas seed` — prints the curation brief to stdout (S4). No LLM call. `--json` = `{"brief":"..."}`.
+- `atlas context [id] [--json]` — compiles the brief (S5). With `id`: centered brief (full body of the workitem + cards linked via evidence/id mention + its paths). Always includes freshness and active claims from other branches ("in progress elsewhere").
+- `atlas state [--json]` — full readable view: focus, all workitems by status, active cards with hook, git ground, freshness. No budget.
+- `atlas task add "title" [--body -|"text"] [--blocked-by id,id] [--from id] [--evidence p1,p2]` — creates a `todo` workitem. Subject to plan-mutation policy ONLY if without `--from` (discovered work is always allowed).
+- `atlas task start <id> [--steal]` — checks claim (S1); creates claim; sets `status: doing`, `branch: <current>`. If already claimed by another active branch/session: exit 2 with `{"error":"claimed","task":"..","by":"<branch>","ready":[...]}`. If the workitem has `branch` of another branch and status doing (versioned binding, different machines): same refusal unless `--steal`.
+- `atlas task block <id> [--on id] [--reason "..."]` — `status: blocked`, updates blocked_by/reason. Allowed only from the branch that owns it (or if not yet owned).
+- `atlas task done <id> --summary "..."` — summary REQUIRED, non-empty (exit 2 otherwise); appends to log.jsonl (with HEAD short and branch), removes the file from work/, releases the claim. Allowed only from the owning branch (or without an owner).
+- `atlas card add --type decision|knowledge "title" [--hook "..."] [--body ...] [--evidence ...]` — hook required (if absent uses the title). Subject to plan-mutation policy.
+- `atlas card supersede <old> <new>` — old→`status: superseded`, `superseded_by: new`; appends event to log.jsonl; the superseded file remains in cards/ but excluded from context. Plan-mutation policy.
+- `atlas show <id> [--json]` — prints the full file (JSON: structured frontmatter + body).
+- `atlas log [--grep pattern] [--json]` — queries log.jsonl (never in the context).
+- `atlas doctor [--json]` — checks: orphaned blocked_by/discovered_from/superseded_by; cycles in blocked_by; done without summary in the log; focus not modified for >N recent commits (freshness, S5.2); expired claims or claims referring to nonexistent workitems (removes them with a note); active cards older than 90 days never touched (warning); malformed frontmatter (tolerant parsing: reports, does not crash). Exit 3 if there are issues.
 
-**Policy plan-mutation:** se il branch corrente non è in `integration_branches`: `warn` (default) → messaggio su stderr, procede; `strict` → exit 2 `{"error":"policy","branch":"..."}`. Mai applicata a: task con `--from`, transizioni start/block/done, comandi read-only.
+**Plan-mutation policy:** if the current branch is not in `integration_branches`: `warn` (default) → message on stderr, proceeds; `strict` → exit 2 `{"error":"policy","branch":"..."}`. Never applied to: tasks with `--from`, start/block/done transitions, read-only commands.
 
-## S3. Blocco bootstrap (installato da init)
+## S3. Bootstrap block (installed by init)
 
 ```markdown
 <!-- atlas:begin -->
@@ -134,66 +134,66 @@ Convenzioni globali: exit 0 = ok · exit 1 = errore I/O/parse · exit 2 = rifiut
 <!-- atlas:end -->
 ```
 
-## S4. Brief di seed (testo costante stampato da `atlas seed`)
+## S4. Seed brief (constant text printed by `atlas seed`)
 
-Contenuto (in inglese, per gli agenti): istruzioni per inventariare TODO/docs/ADR/git log recente e triagiare nel modello ATLAS con le regole lossy di ANALYSIS.md §12.2: focus 5-10 righe su oggi; max ~15 workitem SOLO aperti e rilevanti; card solo per decisioni ancora vincolanti, ADR referenziati via evidence MAI copiati; history esclusa (al più 1 card "lessons" + pointer); tutto via comandi CLI; lavorare su branch dedicato; chiudere con `atlas doctor`; l'umano rivede e committa. Includere gli esempi di comando.
+Content (in English, for agents): instructions for inventorying TODO/docs/ADR/recent git log and triaging into the ATLAS model with the lossy rules from ANALYSIS.md §12.2: focus 5-10 lines about today; max ~15 workitems ONLY open and relevant ones; cards only for decisions still binding, ADRs referenced via evidence NEVER copied; history excluded (at most 1 "lessons" card + pointer); everything via CLI commands; work on a dedicated branch; close with `atlas doctor`; the human reviews and commits. Include the command examples.
 
-## S5. Compilatore di contesto
+## S5. Context compiler
 
-**S5.1 Formato testo** (sezioni in quest'ordine, omesse se vuote):
+**S5.1 Text format** (sections in this order, omitted if empty):
 ```
-# ATLAS CONTEXT (<data>) [STALE: ledger older than last N commits]   ← tag solo se stantio
+# ATLAS CONTEXT (<date>) [STALE: ledger older than last N commits]   ← tag only if stale
 ## FOCUS
 <focus.md verbatim>
 ## NOW
-- [a1b2] titolo (doing, branch feature/x) — evidence: p1, p2
-- [c3d4] titolo (blocked on e5f6: reason)
+- [a1b2] title (doing, branch feature/x) — evidence: p1, p2
+- [c3d4] title (blocked on e5f6: reason)
 ## READY
-- [f6a7] titolo
+- [f6a7] title
 ## RULES
 - [k9m2] hook (decision)
 ## RECENT
 - [b2c3] summary (2026-08-25)
-- git: <ultimi 5 commit oneline>
+- git: <last 5 commits oneline>
 ## GROUND
 branch: feature/x · HEAD: abc1234 · worktree: dirty(3 files) · elsewhere: [a1b2 on feature/y]
 ## POINTERS
 Detail: `atlas show <id>` · Full state: `atlas state` · History: `atlas log --grep <x>`
 ```
-**S5.2 Freshness:** stantio se mtime più recente tra i file di `.atlas/` è anteriore al timestamp del N-esimo commit più recente (N=5) E la working tree ha commit successivi. Esposta in GROUND e come tag in testata.
-**S5.3 Budget:** stima token = len(runes)/4. Se oltre `budget_tokens`, degrada in ordine inverso di priorità (priorità: FOCUS > NOW > GROUND > READY > RULES > RECENT > POINTERS): prima RECENT ridotto a 3 righe poi rimosso, poi RULES ridotte a `[id] primi 60 char`, poi READY troncata con `… (+K altri: atlas state)`. FOCUS e NOW mai rimossi.
+**S5.2 Freshness:** stale if the most recent mtime among the `.atlas/` files is earlier than the timestamp of the Nth most recent commit (N=5) AND the working tree has later commits. Exposed in GROUND and as a tag in the header.
+**S5.3 Budget:** token estimate = len(runes)/4. If over `budget_tokens`, degrade in reverse priority order (priority: FOCUS > NOW > GROUND > READY > RULES > RECENT > POINTERS): first RECENT reduced to 3 lines then removed, then RULES reduced to `[id] first 60 chars`, then READY truncated with `… (+K more: atlas state)`. FOCUS and NOW never removed.
 **S5.4 JSON:** `{"generated":ts,"stale":bool,"focus":"...","now":[{workitem}...],"ready":[...],"rules":[{"id","hook","type"}],"recent":[...],"ground":{"branch","head","dirty","elsewhere":[...]},"budget":{"limit":1500,"estimated":<n>}}`.
-**S5.5 `context <id>`:** FOCUS + il workitem integrale (frontmatter+body) + card i cui id compaiono nel body/evidence del task o il cui evidence interseca i path del task + GROUND + POINTERS. Stesso budget.
+**S5.5 `context <id>`:** FOCUS + the full workitem (frontmatter+body) + cards whose id appears in the task's body/evidence or whose evidence intersects the task's paths + GROUND + POINTERS. Same budget.
 
 ## S6. gitx (subprocess)
 
-Funzioni: `Root(dir)`, `CommonDir(dir)` (`git rev-parse --git-common-dir`, path assoluto), `Branch(dir)`, `HeadShort(dir)`, `IsDirty(dir)` (+conteggio file), `RecentCommits(dir,n)` (oneline), `CommitTimestamps(dir,n)`. Ogni funzione: esegue `git -C dir ...`, error wrapping con stderr. Se non in un repo git: le feature git degradano (context senza GROUND git, freshness non calcolabile) — MAI crash.
+Functions: `Root(dir)`, `CommonDir(dir)` (`git rev-parse --git-common-dir`, absolute path), `Branch(dir)`, `HeadShort(dir)`, `IsDirty(dir)` (+file count), `RecentCommits(dir,n)` (oneline), `CommitTimestamps(dir,n)`. Each function: runs `git -C dir ...`, error wrapping with stderr. If not in a git repo: git features degrade (context without GROUND git, freshness not computable) — NEVER crash.
 
-## S7. Strategia di test (TDD, vincolante)
+## S7. Test strategy (TDD, binding)
 
-- Ordine obbligatorio per ogni unità: scrivere i test (rossi) → implementare → verde → refactor. I commit di fase devono contenere test + implementazione.
-- Helper condiviso `internal/testutil`: `SetupRepo(t)` → t.TempDir + `git init -b main` + config user locale + commit iniziale; `SetupWorktree(t, repo, branch)`. I test git usano SOLO repo temporanei; nessuna rete; deterministici (clock iniettabile ove serve: `Now func() time.Time` nei costruttori di claims/freshness).
-- Integrazione CLI: test che invocano i comandi cobra via `Execute` con args e catturano stdout/stderr/exit (non serve compilare il binario nei test).
-- Golden test per il rendering del contesto (testo e JSON).
-- Casi obbligatori: collisione ID; frontmatter malformato (tolleranza); claim concorrente (2 goroutine che fanno O_EXCL sullo stesso id → esattamente una vince); claim scaduto riacquisibile; steal; done senza summary; policy warn vs strict; budget degradation (fixture oltre budget); init idempotente (doppio run → un solo blocco); merge=union in .gitattributes; ready con blocked_by chiusi nel log; cicli blocked_by (doctor); repo senza git.
-- Coverage: `go test ./... -coverprofile=cover.out && go tool cover -func=cover.out | tail -1` ≥ 70% totale. `go vet ./...` pulito.
+- Mandatory order for every unit: write the tests (red) → implement → green → refactor. Phase commits must contain tests + implementation.
+- Shared helper `internal/testutil`: `SetupRepo(t)` → t.TempDir + `git init -b main` + local user config + initial commit; `SetupWorktree(t, repo, branch)`. Git tests use ONLY temporary repos; no network; deterministic (injectable clock where needed: `Now func() time.Time` in claims/freshness constructors).
+- CLI integration: tests that invoke the cobra commands via `Execute` with args and capture stdout/stderr/exit (no need to build the binary in tests).
+- Golden tests for context rendering (text and JSON).
+- Mandatory cases: ID collision; malformed frontmatter (tolerance); concurrent claim (2 goroutines doing O_EXCL on the same id → exactly one wins); expired claim reacquirable; steal; done without summary; policy warn vs strict; budget degradation (fixture over budget); idempotent init (double run → a single block); merge=union in .gitattributes; ready with blocked_by closed in the log; blocked_by cycles (doctor); repo without git.
+- Coverage: `go test ./... -coverprofile=cover.out && go tool cover -func=cover.out | tail -1` ≥ 70% total. `go vet ./...` clean.
 
-## S8. Fasi di esecuzione (una per agente, sequenziali)
+## S8. Execution phases (one per agent, sequential)
 
-1. **F1 — scaffold + ledger:** verifica toolchain (go, git; installare go via brew se assente), `git init` (main), go.mod, .gitignore (atlas binario, cover.out), testutil, internal/ledger completo (S1) in TDD. Commit `feat(ledger): core data model with TDD`.
-2. **F2 — gitx + claims:** S6 e claims (S1) in TDD, incl. test worktree e concorrenza. Commit `feat(gitx,claims): git wrapper and atomic claims`.
-3. **F3 — state + contextc:** ready/freshness (S5.2) e compilatore (S5) in TDD con golden test. Commit `feat(context): state derivation and budgeted context compiler`.
-4. **F4 — CLI completa:** tutti i comandi (S2), bootstrap (S3), seed (S4), policy, in TDD con test d'integrazione. Commit `feat(cli): full command surface`.
-5. **F5 — doctor + hardening:** doctor completo, riempimento gap di coverage fino a ≥70%, `go vet`, README.md (installazione, comandi, formato file), smoke test end-to-end in un repo temporaneo (init→seed→task add/start/done→context→doctor). Commit `feat(doctor): integrity checks; docs and coverage hardening`.
-6. **F6 — spec management:** S9 completo in TDD (entità spec, comandi, integrazione context/state/doctor, bootstrap e seed aggiornati, README). Commit `feat(spec): living canonical specs linked to workitems`.
+1. **F1 — scaffold + ledger:** verify toolchain (go, git; install go via brew if absent), `git init` (main), go.mod, .gitignore (atlas binary, cover.out), testutil, complete internal/ledger (S1) in TDD. Commit `feat(ledger): core data model with TDD`.
+2. **F2 — gitx + claims:** S6 and claims (S1) in TDD, incl. worktree and concurrency tests. Commit `feat(gitx,claims): git wrapper and atomic claims`.
+3. **F3 — state + contextc:** ready/freshness (S5.2) and compiler (S5) in TDD with golden tests. Commit `feat(context): state derivation and budgeted context compiler`.
+4. **F4 — complete CLI:** all commands (S2), bootstrap (S3), seed (S4), policy, in TDD with integration tests. Commit `feat(cli): full command surface`.
+5. **F5 — doctor + hardening:** complete doctor, filling coverage gaps up to ≥70%, `go vet`, README.md (installation, commands, file format), end-to-end smoke test in a temporary repo (init→seed→task add/start/done→context→doctor). Commit `feat(doctor): integrity checks; docs and coverage hardening`.
+6. **F6 — spec management:** complete S9 in TDD (spec entity, commands, context/state/doctor integration, updated bootstrap and seed, README). Commit `feat(spec): living canonical specs linked to workitems`.
 
-Regole per ogni fase: non modificare file di fasi precedenti se non necessario; suite SEMPRE verde a fine fase (`go test ./...`); riportare coverage di fase.
+Rules for every phase: do not modify files from previous phases unless necessary; suite ALWAYS green at the end of the phase (`go test ./...`); report phase coverage.
 
-## S9. Spec management (fase F6 — estende S1/S2/S3/S5)
+## S9. Spec management (phase F6 — extends S1/S2/S3/S5)
 
-Motivazione: il flusso di lavoro dell'utente è spec-driven; i corpi dei workitem non bastano per intenti grandi (ANALYSIS §16.3, deciso 2026-08-27). Modello: **spec canoniche viventi** — una per capability/area, aggiornate in place; la storia dei delta è git. MAI spec-per-feature accumulate. Tutte le stringhe user-facing in INGLESE.
+Rationale: the user's workflow is spec-driven; workitem bodies are not enough for large intents (ANALYSIS §16.3, decided 2026-08-27). Model: **living canonical specs** — one per capability/area, updated in place; the history of deltas is git. NEVER accumulate per-feature specs. All user-facing strings in ENGLISH.
 
-**S9.1 Dato.** `.atlas/specs/<id>-<slug>.md`, stesso spazio ID hex (collision check esteso a specs/):
+**S9.1 Data.** `.atlas/specs/<id>-<slug>.md`, same hex ID space (collision check extended to specs/):
 ```markdown
 ---
 id: 3fa9
@@ -203,49 +203,49 @@ superseded_by: ""
 created: 2026-08-27
 evidence: []
 ---
-Body = la specifica (markdown libero, documento vivente).
+Body = the specification (free markdown, living document).
 ```
-Workitem: nuovo campo opzionale `spec: <id>`. `task add --spec <id>` valida che la spec esista e non sia superseded: exit 2 `{"error":"spec_not_found"}` / `{"error":"spec_superseded","superseded_by":"..."}`.
+Workitem: new optional field `spec: <id>`. `task add --spec <id>` validates that the spec exists and is not superseded: exit 2 `{"error":"spec_not_found"}` / `{"error":"spec_superseded","superseded_by":"..."}`.
 
-**S9.2 Comandi** (convenzioni S2; policy plan-mutation su add/activate/update/supersede, mai su list/show):
-- `atlas spec add "title" [--body -|text] [--evidence p1,p2]` → crea draft, stampa id.
-- `atlas spec activate <id>` → draft→active (exit 2 se superseded o già active? no: idempotente su active, exit 2 solo su superseded).
-- `atlas spec update <id> [--title t] [--body -|text] [--evidence ...]` → aggiorna in place; rifiutato su superseded (exit 2). `--body -` legge stdin.
-- `atlas spec supersede <old> <new>` → old→superseded + superseded_by; evento in log.jsonl con `kind:"spec"`.
-- `atlas spec list [--json]` → id, title, status, numero di workitem aperti collegati.
-- `atlas show <id>` esteso a specs/ (cerca in work/, cards/, specs/).
+**S9.2 Commands** (S2 conventions; plan-mutation policy on add/activate/update/supersede, never on list/show):
+- `atlas spec add "title" [--body -|text] [--evidence p1,p2]` → creates draft, prints id.
+- `atlas spec activate <id>` → draft→active (exit 2 if superseded or already active? no: idempotent on active, exit 2 only on superseded).
+- `atlas spec update <id> [--title t] [--body -|text] [--evidence ...]` → updates in place; refused on superseded (exit 2). `--body -` reads stdin.
+- `atlas spec supersede <old> <new>` → old→superseded + superseded_by; event in log.jsonl with `kind:"spec"`.
+- `atlas spec list [--json]` → id, title, status, number of open workitems linked.
+- `atlas show <id>` extended to specs/ (searches in work/, cards/, specs/).
 
-**S9.3 Contesto.**
-- Brief generale: nuova sezione `## SPECS` tra RULES e RECENT, una riga per spec draft/active: `- [id] title (status, N open tasks)`. Priorità budget aggiornata: FOCUS > NOW > GROUND > READY > RULES > SPECS > RECENT > POINTERS; degradazione SPECS (dopo RECENT, prima di RULES): righe ridotte a `- [id] title`.
-- `atlas context <task-id>`: se il task ha `spec:`, dopo il corpo del task una sezione `## SPEC [id] title` con il body integrale della spec. Oltre budget, il body della spec degrada per primo: troncato con riga finale `… (full spec: atlas show <id>)`.
-- `atlas state`: sezione specs completa.
+**S9.3 Context.**
+- General brief: new `## SPECS` section between RULES and RECENT, one line per draft/active spec: `- [id] title (status, N open tasks)`. Updated budget priority: FOCUS > NOW > GROUND > READY > RULES > SPECS > RECENT > POINTERS; SPECS degradation (after RECENT, before RULES): lines reduced to `- [id] title`.
+- `atlas context <task-id>`: if the task has `spec:`, after the task body a `## SPEC [id] title` section with the full body of the spec. Over budget, the spec body degrades first: truncated with a final line `… (full spec: atlas show <id>)`.
+- `atlas state`: full specs section.
 
-**S9.4 Doctor.** Nuovi check: `spec:` di un workitem → spec inesistente (ERROR) o superseded (WARNING); `superseded_by` orfano tra spec (ERROR); spec draft più vecchie di 30 giorni (WARNING); frontmatter malformato in specs/ (ERROR); duplicati id estesi a specs/.
+**S9.4 Doctor.** New checks: a workitem's `spec:` → nonexistent spec (ERROR) or superseded (WARNING); orphaned `superseded_by` among specs (ERROR); draft specs older than 30 days (WARNING); malformed frontmatter in specs/ (ERROR); duplicate ids extended to specs/.
 
-**S9.5 Bootstrap (S3).** Aggiungere UNA riga al blocco (init idempotente la propaga ai repo al re-run):
+**S9.5 Bootstrap (S3).** Add ONE line to the block (idempotent init propagates it to repos on re-run):
 `- Working from a spec? Link tasks with \`atlas task add --spec <id>\`; \`atlas context <task-id>\` will include it.`
 
-**S9.6 Seed (S4).** Aggiungere al brief una sezione SPECS: creare spec solo per capability con intento genuinamente vivente (cap ~5 al seed); referenziare documenti di spec esistenti via evidence, mai copiarli.
+**S9.6 Seed (S4).** Add a SPECS section to the brief: create a spec only for capability with a genuinely living intent (cap ~5 at seed); reference existing spec documents via evidence, never copy them.
 
-**S9.7 Test obbligatori** (S7 vale integralmente): roundtrip save/load spec; lifecycle draft→active→superseded; validazione `task add --spec` (inesistente/superseded); golden aggiornati per sezione SPECS nel brief generale; golden target-mode con spec inclusa e con degradazione budget del body; doctor per ognuno dei nuovi check; policy warn/strict sui comandi spec; collisione id cross-directory (work/cards/specs); `spec update --body -` da stdin; README aggiornato.
+**S9.7 Mandatory tests** (S7 applies in full): roundtrip save/load spec; draft→active→superseded lifecycle; `task add --spec` validation (nonexistent/superseded); updated goldens for the SPECS section in the general brief; target-mode goldens with spec included and with budget degradation of the body; doctor for each of the new checks; policy warn/strict on spec commands; cross-directory id collision (work/cards/specs); `spec update --body -` from stdin; updated README.
 
-**S9.8 Spec ↔ decisioni (ADR) — vincolo di tracciabilità (aggiunto 2026-08-27).**
-Una spec deve seguire una decisione. Modello:
-- Frontmatter spec: nuovo campo `decisions: []` — ogni voce è o l'id di una card ATLAS di tipo decision, o un path nel repo a un ADR esistente (es. `docs/adr/0034-enrichment-stage.md`).
-- `spec add --decision <id-o-path>` (CSV/ripetibile) e `spec update --decision ...` (sostituisce la lista).
-- **`spec activate` richiede almeno una decisione**: exit 2 `{"error":"spec_without_decision"}` altrimenti. Le draft possono nascere senza (si abbozza prima, si àncora per attivare).
-- Validazione a add/update/activate: id card → deve esistere ed essere `type: decision` (`{"error":"decision_not_found","id":"..."}`); a activate una decision superseded → exit 2 `{"error":"decision_superseded","id":"...","superseded_by":"..."}`; path → deve esistere su disco (`{"error":"decision_path_not_found","path":"..."}`).
-- Doctor: spec active con decisions vuoto (ERROR — invariante rotto da edit manuale); riferimento a card inesistente (ERROR); riferimento a decision superseded (WARNING: "spec may need revision"); path inesistente (ERROR).
-- Contesto target mode: sotto l'header `## SPEC [id] title`, una riga `Decisions: k9m2, docs/adr/0034-enrichment-stage.md` (non degradabile: è 1 riga).
-- `spec list`: mostra le decisioni collegate.
-- Seed brief e README aggiornati: creare prima la decision card, poi la spec che la referenzia.
+**S9.8 Spec ↔ decisions (ADR) — traceability constraint (added 2026-08-27).**
+A spec must follow a decision. Model:
+- Spec frontmatter: new field `decisions: []` — each entry is either the id of an ATLAS card of type decision, or a path in the repo to an existing ADR (e.g. `docs/adr/0034-enrichment-stage.md`).
+- `spec add --decision <id-or-path>` (CSV/repeatable) and `spec update --decision ...` (replaces the list).
+- **`spec activate` requires at least one decision**: exit 2 `{"error":"spec_without_decision"}` otherwise. Drafts can be created without one (sketch first, anchor to activate).
+- Validation at add/update/activate: card id → must exist and be `type: decision` (`{"error":"decision_not_found","id":"..."}`); at activate a superseded decision → exit 2 `{"error":"decision_superseded","id":"...","superseded_by":"..."}`; path → must exist on disk (`{"error":"decision_path_not_found","path":"..."}`).
+- Doctor: active spec with empty decisions (ERROR — invariant broken by manual edit); reference to nonexistent card (ERROR); reference to superseded decision (WARNING: "spec may need revision"); nonexistent path (ERROR).
+- Target mode context: under the `## SPEC [id] title` header, a line `Decisions: k9m2, docs/adr/0034-enrichment-stage.md` (not degradable: it's 1 line).
+- `spec list`: shows the linked decisions.
+- Updated seed brief and README: create the decision card first, then the spec that references it.
 
-## S10. Graph + spec scaffold (fase F7 — eredità utile di aiops-ai-spec, deciso 2026-08-27)
+## S10. Graph + spec scaffold (phase F7 — useful legacy from aiops-ai-spec, decided 2026-08-27)
 
-Unici due porting approvati dall'analisi di aiops-ai-spec-manager. Stringhe user-facing in INGLESE.
+The only two porting items approved by the aiops-ai-spec-manager analysis. User-facing strings in ENGLISH.
 
-**S10.1 `atlas graph [--mermaid] [--json]`** — read-only, MAI incluso nel brief di context (comando opt-in per umani). Renderizza il DAG `blocked_by` dei workitem ATTIVI (todo/doing/blocked; i done non esistono più in work/).
-- Default (testo): livelli topologici — livello 0 = nessun blocker attivo, livello N = tutti i blocker in livelli <N. Formato:
+**S10.1 `atlas graph [--mermaid] [--json]`** — read-only, NEVER included in the context brief (opt-in command for humans). Renders the `blocked_by` DAG of ACTIVE workitems (todo/doing/blocked; done ones no longer exist in work/).
+- Default (text): topological levels — level 0 = no active blockers, level N = all blockers at levels <N. Format:
 ```
 # ATLAS GRAPH
 Level 0 (unblocked, parallelizable):
@@ -253,13 +253,13 @@ Level 0 (unblocked, parallelizable):
 Level 1:
 - [c3d4] title (todo, blocked by a1b2)
 ```
-- Blocker riferiti a id chiusi/inesistenti non bloccano (stessa semantica di READY).
-- Cicli: i nodi coinvolti finiscono in un gruppo finale `Cycle (unresolvable):` con warning su stderr che rimanda a `atlas doctor`; exit 0 (graph mostra, doctor giudica).
-- `--mermaid`: `flowchart TD`, nodi `id["id: title (status)"]`, archi `blocker --> blocked`.
+- Blockers referring to closed/nonexistent ids do not block (same semantics as READY).
+- Cycles: the nodes involved end up in a final `Cycle (unresolvable):` group with a warning on stderr pointing to `atlas doctor`; exit 0 (graph shows, doctor judges).
+- `--mermaid`: `flowchart TD`, nodes `id["id: title (status)"]`, edges `blocker --> blocked`.
 - `--json`: `{"levels":[[{"id","title","status","blocked_by":[...]}]],"cycles":[...]}`.
-- Niente DOT/Graphviz.
+- No DOT/Graphviz.
 
-**S10.2 Scaffold di default per `spec add`** — quando `--body` è omesso, il body della spec creata è questo template (riscritto per spec-come-documento-vivente, NON il template per-feature di aiops):
+**S10.2 Default scaffold for `spec add`** — when `--body` is omitted, the body of the created spec is this template (rewritten for spec-as-living-document, NOT the per-feature template from aiops):
 ```markdown
 ## Goal
 <what this capability must achieve and for whom>
@@ -273,6 +273,6 @@ Level 1:
 ## Open questions
 <unresolved points — resolve these before activating the spec>
 ```
-Con `--body` esplicito il template non viene usato. Nessuna sync automatica del body: resta testo libero editabile.
+With an explicit `--body` the template is not used. No automatic body sync: it remains free editable text.
 
-**S10.3 Test obbligatori (S7 vale):** livelli topologici multi-livello; blocker chiusi non bloccano; ciclo → gruppo Cycle + warning stderr + exit 0; golden per testo e mermaid; `--json` shape; scaffold presente senza `--body` e assente con `--body`; attivazione di una spec col solo scaffold resta soggetta a S9.8 (decisions obbligatorie). README aggiornato (graph nel command table, scaffold menzionato in spec add).
+**S10.3 Mandatory tests (S7 applies):** multi-level topological levels; closed blockers do not block; cycle → Cycle group + stderr warning + exit 0; golden for text and mermaid; `--json` shape; scaffold present without `--body` and absent with `--body`; activating a spec with only the scaffold remains subject to S9.8 (decisions required). Updated README (graph in the command table, scaffold mentioned in spec add).

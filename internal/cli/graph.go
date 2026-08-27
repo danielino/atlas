@@ -11,7 +11,7 @@ import (
 	"github.com/danielino/atlas/internal/state"
 )
 
-// newGraphCmd implements `atlas graph` (PLAN.md S10.1): a read-only,
+// newGraphCmd implements `atlas graph` (SPEC.md S10.1): a read-only,
 // opt-in-for-humans view of the blocked_by DAG over active workitems. It
 // is never part of `atlas context` output. Filtering out closed/
 // nonexistent blockers ("active" blockers) is done once, in

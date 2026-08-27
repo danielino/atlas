@@ -6,7 +6,7 @@ import (
 	"github.com/danielino/atlas/internal/ledger"
 )
 
-// GraphNode is one workitem's position in the dependency graph (PLAN.md
+// GraphNode is one workitem's position in the dependency graph (SPEC.md
 // S10.1): the workitem itself plus ActiveBlockedBy, its blocked_by ids
 // restricted to those naming another currently-active workitem (closed or
 // nonexistent ids never block, same semantics as Ready) and sorted for
@@ -19,7 +19,7 @@ type GraphNode struct {
 }
 
 // GraphLevels computes the topological levels of the blocked_by DAG among
-// the given (active) workitems, for `atlas graph` (PLAN.md S10.1). Level 0
+// the given (active) workitems, for `atlas graph` (SPEC.md S10.1). Level 0
 // holds every workitem with no active blocker; level N holds workitems
 // whose active blockers are all in levels < N. A blocked_by id that does
 // not name one of the given workitems (closed or nonexistent) is not an

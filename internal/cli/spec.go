@@ -30,7 +30,7 @@ func newSpecCmd() *cobra.Command {
 }
 
 // specScaffold is the default body for `spec add` when --body is omitted
-// (PLAN.md S10.2): a spec-as-living-document template, distinct from
+// (SPEC.md S10.2): a spec-as-living-document template, distinct from
 // aiops-ai-spec's per-feature template. Never applied when --body is
 // given explicitly, and never re-synced afterward — the body is free text
 // from that point on.

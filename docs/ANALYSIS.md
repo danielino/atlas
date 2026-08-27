@@ -1,423 +1,423 @@
-# ATLAS — Analisi di Discovery e Architettura
+# ATLAS — Discovery and Architecture Analysis
 
-**Ruolo:** Principal Software Architect (fase discovery — nessuna implementazione)
-**Data:** 2026-08-27
-**Stato:** bozza per discussione — nulla in questo documento è deciso definitivamente
+**Role:** Principal Software Architect (discovery phase — no implementation)
+**Date:** 2026-08-27
+**Status:** historical discovery/rationale record. The decisions explicitly marked as promoted/resolved below are final and now live as ADRs in `docs/adr/`; everything else is analysis and rationale, not a live contract — when in doubt, `docs/SPEC.md` is the binding implementation spec.
 
 ---
 
 ## 1. Executive summary
 
-Il problema che ATLAS deve risolvere **non è** la mancanza di documentazione, di specifiche o di memoria per gli agenti. L'ecosistema ne è saturo. Il problema è che **nessuno strumento esistente mantiene una rappresentazione compatta, affidabile e a basso costo di contesto dello stato corrente di un progetto**, tale che un agente di coding possa riprendere il lavoro senza ricostruire la storia.
+The problem ATLAS must solve is **not** a lack of documentation, specs, or memory for agents. The ecosystem is saturated with those. The problem is that **no existing tool maintains a compact, reliable, low-context-cost representation of a project's current state**, such that a coding agent can resume work without reconstructing history.
 
-Formulazione del problema:
+Problem statement:
 
-> A ogni nuova sessione, un agente paga un "tasso di ricostruzione": deve leggere TODO storici, spec accumulate, ADR, log e codice per dedurre *dove siamo* e *cosa viene dopo*. Questo costo cresce con l'età del progetto, non con la dimensione del lavoro da fare.
+> At the start of every new session, an agent pays a "reconstruction tax": it must read historical TODOs, accumulated specs, ADRs, logs and code to infer *where we are* and *what comes next*. This cost grows with the age of the project, not with the size of the work to be done.
 
-La tesi di ATLAS: separare **stato corrente** (piccolo, curato, autorevole per l'intento) da **storia** (append-only, mai caricata di default), e offrire un comando che compili un **brief minimo sufficiente** fatto principalmente di *puntatori*, non di contenuti.
+ATLAS's thesis: separate **current state** (small, curated, authoritative for intent) from **history** (append-only, never loaded by default), and offer a command that compiles a **minimum sufficient brief** made mostly of *pointers*, not content.
 
-Tre conclusioni chiave della ricerca, anticipate:
+Three key conclusions from the research, stated up front:
 
-1. **Il divario esiste davvero.** Spec Kit e OpenSpec gestiscono il *cambiamento* (feature → artefatti → archivio), non lo *stato corrente del lavoro*. I sistemi di memoria (Ruflo/claude-flow, Mem0, Zep) accumulano contesto invece di ridurlo. Le convenzioni (CLAUDE.md/AGENTS.md) coprono le *regole stabili*, non lo stato dinamico.
-2. **Il concorrente più vicino non è uno strumento SDD ma Beads** (issue tracker git-nativo per agenti, di Steve Yegge): risolve già task-graph, ready-work detection e compattazione dei task chiusi. ATLAS si differenzia sul livello che Beads non ha — stato di progetto + decisioni + compilazione del contesto. **Decisione di prodotto (2026-08-27): ATLAS è standalone; nessun wrapper né dipendenza da Beads.** Beads resta prior art da cui riusare lezioni di design (id hash, ready-detection, compattazione alla chiusura).
-3. **Il rischio principale non è tecnico ma comportamentale:** qualsiasi stato curato diventa stantio se agenti e umani non lo aggiornano. L'architettura deve rendere l'aggiornamento più economico della non-manutenzione, e deve saper *rilevare* la staleness invece di fingere che non esista.
+1. **The gap really exists.** Spec Kit and OpenSpec manage *change* (feature → artifacts → archive), not the *current state of work*. Memory systems (Ruflo/claude-flow, Mem0, Zep) accumulate context instead of reducing it. Conventions (CLAUDE.md/AGENTS.md) cover *stable rules*, not dynamic state.
+2. **The closest competitor is not an SDD tool but Beads** (a git-native issue tracker for agents, by Steve Yegge): it already solves the task graph, ready-work detection and closed-task compaction. ATLAS differentiates itself at the layer Beads doesn't have — project state + decisions + context compilation. **Product decision (2026-08-27): ATLAS is standalone; no wrapper around and no dependency on Beads.** See [ADR 0001](adr/0001-standalone-not-built-on-beads.md). Beads remains prior art from which design lessons are reused (hash ids, ready-detection, compaction on close).
+3. **The main risk is not technical but behavioral:** any curated state goes stale if agents and humans don't update it. The architecture must make updating cheaper than not maintaining it, and must be able to *detect* staleness instead of pretending it doesn't exist.
 
 ---
 
-## 2. Analisi dei pain point
+## 2. Pain point analysis
 
-### A. Dolore del developer (validato concettualmente)
+### A. Developer pain (conceptually validated)
 
-| Pain point | Reale? | Vale la pena risolverlo in ATLAS? |
+| Pain point | Real? | Worth solving in ATLAS? |
 |---|---|---|
-| Distinguere stato corrente da storia | **Sì, è il pain centrale.** Il TODO.md da 2.000 righe è il sintomo canonico: un log travestito da stato. | **Sì — è il cuore del prodotto.** |
-| Ricordare il perché delle decisioni | Sì, ma è già ben servito dagli ADR *come formato*; il fallimento è di processo (nessuno li legge/aggiorna). | Parzialmente: ATLAS deve *indicizzare* le decisioni nel contesto, non reinventare l'ADR. |
-| TODO stantii / task drift | Sì. Deriva dall'assenza di un ciclo di vita: i task non hanno uno stato "chiuso e compattato". | Sì, con lifecycle esplicito e compattazione. |
-| Spec in conflitto / duplicate | Sì nei sistemi SDD (verificato: issue OpenSpec #678, #1387). Causato dal modello "spec per feature" senza livello canonico. | Indirettamente: ATLAS non deve avere spec-per-feature accumulate. |
-| ADR superati e fuorvianti | Sì (letteratura ADR: "ADR del 2021 letto alla lettera è attivamente fuorviante"). | Sì, ma con un meccanismo leggero: stato `superseded` + esclusione dal contesto di default. |
-| Trovare il lavoro corrente | Sì. Beads lo chiama problema "50 First Dates". | Sì. |
-| Documentazione duplicata | Sì, ma è un problema generale di igiene documentale; ATLAS non può risolverlo per tutto il repo. | No come obiettivo diretto; sì come conseguenza (una sola sede per lo stato). |
+| Distinguishing current state from history | **Yes, it's the central pain.** The 2,000-line TODO.md is the canonical symptom: a log disguised as state. | **Yes — it's the heart of the product.** |
+| Remembering the "why" behind decisions | Yes, but already well served by ADRs *as a format*; the failure is procedural (nobody reads/updates them). | Partially: ATLAS must *index* decisions into the context, not reinvent the ADR. |
+| Stale TODOs / task drift | Yes. Stems from the absence of a lifecycle: tasks have no "closed and compacted" state. | Yes, with an explicit lifecycle and compaction. |
+| Conflicting / duplicate specs | Yes in SDD systems (verified: OpenSpec issues #678, #1387). Caused by the "spec per feature" model with no canonical layer. | Indirectly: ATLAS must not accumulate spec-per-feature. |
+| Outdated, misleading ADRs | Yes (ADR literature: "a 2021 ADR read literally is actively misleading"). | Yes, but with a lightweight mechanism: `superseded` status + exclusion from the default context. |
+| Finding the current work | Yes. Beads calls this the "50 First Dates" problem. | Yes. |
+| Duplicated documentation | Yes, but it's a general documentation-hygiene problem; ATLAS can't solve it for the whole repo. | Not as a direct goal; yes as a consequence (a single home for state). |
 
-### B. Dolore dell'agente (cause di consumo eccessivo di contesto)
+### B. Agent pain (causes of excessive context consumption)
 
-Ordinate per impatto stimato:
+Ordered by estimated impact:
 
-1. **Ricostruzione dello stato da log storici** — leggere 2.000 righe per estrarne 50 rilevanti. Rapporto segnale/rumore pessimo; peggiora con l'età del progetto.
-2. **Context rot** — verificato (ricerca Chroma, 18 modelli frontier): le prestazioni degradano in modo non uniforme e a scalino al crescere dei token, anche su task banali. Ogni token irrilevante non è solo un costo economico: riduce l'affidabilità.
-3. **Retrieval troppo ampio** — i sistemi di memoria (Ruflo: AgentDB con vettori+grafo, ~210 tool MCP) iniettano più di quanto serva; la stessa superficie di tool consuma contesto. Conferma l'intuizione iniziale: più memoria ≠ meglio.
-4. **Riletture ripetute** — l'agente riscopre a ogni sessione la struttura del repo e le convenzioni. In parte già mitigato da CLAUDE.md/AGENTS.md (regole stabili), non dallo stato dinamico.
-5. **Discontinuità di sessione** — la compaction automatica perde istruzioni iniziali; la prassi comunitaria emergente è il "handoff brief" manuale a fine sessione. ATLAS può standardizzare esattamente questo.
-6. **Informazione duplicata/stantia** — spec che ripetono il codice, TODO che contraddicono lo stato reale. Peggio dell'assenza: l'agente non sa a chi credere.
+1. **State reconstruction from historical logs** — reading 2,000 lines to extract 50 relevant ones. Poor signal-to-noise ratio; worsens with project age.
+2. **Context rot** — verified (Chroma research, 18 frontier models): performance degrades non-uniformly and in steps as token count grows, even on trivial tasks. Every irrelevant token isn't just an economic cost: it reduces reliability.
+3. **Retrieval that is too broad** — memory systems (Ruflo: AgentDB with vectors+graph, ~210 MCP tools) inject more than needed; the tool surface itself consumes context. Confirms the initial intuition: more memory ≠ better.
+4. **Repeated re-reading** — the agent rediscovers the repo's structure and conventions every session. Partly mitigated already by CLAUDE.md/AGENTS.md (stable rules), not by dynamic state.
+5. **Session discontinuity** — automatic compaction loses initial instructions; the emerging community practice is a manual "handoff brief" at end of session. ATLAS can standardize exactly this.
+6. **Duplicated/stale information** — specs that repeat the code, TODOs that contradict the real state. Worse than absence: the agent doesn't know whom to trust.
 
-**Osservazione architetturale:** i punti 1, 5, 6 sono risolvibili con un *ledger di stato piccolo e curato*; i punti 2, 3 impongono che il contesto compilato sia fatto di **puntatori + sintesi minime**, mai di dump; il punto 4 è già risolto dall'ecosistema e ATLAS non deve duplicarlo.
+**Architectural observation:** points 1, 5, 6 are solvable with a *small, curated state ledger*; points 2, 3 require the compiled context to be made of **pointers + minimal summaries**, never dumps; point 4 is already solved by the ecosystem and ATLAS must not duplicate it.
 
-### C. Ciclo di vita dell'informazione (sintesi)
+### C. Information lifecycle (synthesis)
 
-| Tipo | Chi la crea | Quando diventa stantia | Autorevole? | Nel contesto di default? | Provenienza necessaria? |
+| Type | Created by | Becomes stale when | Authoritative? | In default context? | Provenance needed? |
 |---|---|---|---|---|---|
-| Codice | dev + agente | mai (è la verità) | **Sì — fatto** | No (letto just-in-time) | no (è la fonte) |
-| Git history | automatica | mai (append-only) | Sì — per gli eventi | No (interrogata on demand) | no |
-| Task attivi | dev/agente | in giorni | Sì — per l'intento | **Sì** | utile (link a spec/commit) |
-| Task chiusi | transizione di stato | subito dopo la chiusura | solo storicamente | **No** (solo sintesi di 1 riga se recente) | sì (commit che chiude) |
-| Decisioni attive | dev (spesso con agente) | quando superate | Sì — per i vincoli | Sì, in forma di indice | sì (alternativa scartata, data) |
-| Decisioni superate | transizione di stato | — | no | No | — |
-| Spec / intento di feature | dev | quando implementate | Sì finché attive | Solo se legate al task corrente | utile |
-| Conoscenza del progetto (gotcha, mappa, convenzioni) | dev/agente | lentamente | media | Indice sì, corpo on demand | consigliata (path/commit) |
-| Log di lavoro agente | agente | immediatamente | no | **Mai** | — |
+| Code | dev + agent | never (it's the truth) | **Yes — fact** | No (read just-in-time) | no (it's the source) |
+| Git history | automatic | never (append-only) | Yes — for events | No (queried on demand) | no |
+| Active tasks | dev/agent | within days | Yes — for intent | **Yes** | useful (link to spec/commit) |
+| Closed tasks | state transition | right after closing | only historically | **No** (only a 1-line summary if recent) | yes (the commit that closes it) |
+| Active decisions | dev (often with agent) | when superseded | Yes — for constraints | Yes, as an index | yes (rejected alternative, date) |
+| Superseded decisions | state transition | — | no | No | — |
+| Spec / feature intent | dev | once implemented | Yes while active | Only if linked to the current task | useful |
+| Project knowledge (gotchas, map, conventions) | dev/agent | slowly | medium | Index yes, body on demand | recommended (path/commit) |
+| Agent work log | agent | immediately | no | **Never** | — |
 
-### D. Failure mode (anticipazione — dettaglio in §13)
+### D. Failure modes (preview — detailed in §13)
 
-I quattro più pericolosi: **stato stantio creduto vero**, **doppia verità** (stato vs codice/git in disaccordo), **write-back mancante** (l'agente lavora ma non aggiorna ATLAS), **conflitti concorrenti** (due agenti/branch modificano lo stato). L'architettura è progettata attorno a questi quattro.
+The four most dangerous: **stale state believed true**, **double truth** (state vs. code/git disagreeing), **missing write-back** (the agent works but doesn't update ATLAS), **concurrent conflicts** (two agents/branches modifying state). The architecture is designed around these four.
 
 ---
 
-## 3. Analisi dell'ecosistema esistente
+## 3. Existing ecosystem analysis
 
-Sintesi della ricerca (fonti primarie verificate ad agosto 2026; citazioni nei rapporti di ricerca).
+Research synthesis (primary sources verified as of August 2026; detailed citations in the session's research reports).
 
-### GitHub Spec Kit (~132k stelle, attivo)
-- **Modello:** `.specify/` (template, constitution) + `specs/<branch>/` con spec.md, plan.md, tasks.md, research.md, data-model.md, contracts/. Workflow a slash command: constitution → specify → plan → tasks → implement.
-- **Cosa fa bene:** distribuzione multi-agente via file di slash command nativi (30+ agenti); il concetto di *constitution* (vincoli stabili di progetto).
-- **Cosa fa male (verificato):** ceremonia estrema — recensione Scott Logic: 2.577 righe di markdown per 689 righe di codice, 3,5 ore di revisione di documenti vs ~8 minuti con prompting incrementale. Nessun livello di "spec corrente del sistema": le dir per feature si accumulano e derivano. `/speckit.converge` è una toppa successiva per il brownfield.
-- **Lezione per ATLAS:** la distribuzione file-based agent-nativa è la convenzione vincente; il modello "artefatti per feature senza stato canonico" è l'anti-pattern da evitare.
+### GitHub Spec Kit (~132k stars, active)
+- **Model:** `.specify/` (templates, constitution) + `specs/<branch>/` with spec.md, plan.md, tasks.md, research.md, data-model.md, contracts/. Slash-command workflow: constitution → specify → plan → tasks → implement.
+- **What it does well:** multi-agent distribution via native slash-command files (30+ agents); the *constitution* concept (stable project constraints).
+- **What it does badly (verified):** extreme ceremony — Scott Logic review: 2,577 lines of markdown for 689 lines of code, 3.5 hours reviewing documents vs. ~8 minutes with incremental prompting. No "current system spec" layer: per-feature directories accumulate and drift. `/speckit.converge` is a later patch for brownfield.
+- **Lesson for ATLAS:** agent-native file-based distribution is the winning convention; the "artifacts per feature with no canonical state" model is the anti-pattern to avoid.
 
-### OpenSpec (~66k stelle, attivo)
-- **Modello:** due livelli espliciti — `openspec/specs/` = verità corrente, `openspec/changes/<nome>/` = delta in corso (ADDED/MODIFIED/REMOVED), `changes/archive/` = storia. Il passo di archive fonde i delta nella verità corrente.
-- **Cosa fa bene:** è l'unico ad aver formalizzato **corrente ≠ delta ≠ storia** — esattamente la distinzione che ATLAS vuole, applicata però alle sole specifiche.
-- **Cosa fa male (verificato):** le spec sono advisory e derivano comunque (risync manuale); cambi paralleli sulla stessa requirement confliggono (issue #1387); resta un workflow a 4+ comandi per ogni cambiamento.
-- **Lezione per ATLAS:** riusare il modello a due livelli, ma applicarlo allo *stato del progetto* e renderlo opzionale, non un rito per ogni modifica.
+### OpenSpec (~66k stars, active)
+- **Model:** two explicit levels — `openspec/specs/` = current truth, `openspec/changes/<name>/` = delta in progress (ADDED/MODIFIED/REMOVED), `changes/archive/` = history. The archive step merges deltas into current truth.
+- **What it does well:** the only one to have formalized **current ≠ delta ≠ history** — exactly the distinction ATLAS wants, but applied only to specs.
+- **What it does badly (verified):** specs are advisory and still drift (manual resync); parallel changes to the same requirement conflict (issue #1387); still a 4+ command workflow for every change.
+- **Lesson for ATLAS:** reuse the two-level model, but apply it to *project state* and make it optional, not a ritual for every change.
 
 ### ADR / MADR
-- **Convenzione consolidata:** Nygard (Context/Decision/Status/Consequences) e MADR 4.0 (frontmatter YAML con status proposed/accepted/deprecated/superseded-by, file `NNNN-titolo.md` in `docs/decisions/`). Regola: mai cancellare, marcare superseded.
-- **Failure mode noti:** "ADR come teatro" (scritti, mai letti), staleness fuorviante, catene di supersession rotte. La letteratura recente converge su: ADR come *log append-only* + documento di stato corrente separato + inserimento nel contesto degli agenti perché vengano effettivamente letti.
-- **Lezione per ATLAS:** non inventare un nuovo formato di decisione. Adottare frontmatter compatibile MADR e risolvere il problema che MADR non risolve: far *arrivare* le decisioni attive nel contesto dell'agente.
+- **Established convention:** Nygard (Context/Decision/Status/Consequences) and MADR 4.0 (YAML frontmatter with status proposed/accepted/deprecated/superseded-by, file `NNNN-title.md` in `docs/decisions/`). Rule: never delete, mark superseded.
+- **Known failure modes:** "ADR as theater" (written, never read), misleading staleness, broken supersession chains. Recent literature converges on: ADR as an *append-only log* + a separate current-state document + injection into agents' context so they actually get read.
+- **Lesson for ATLAS:** don't invent a new decision format. Adopt MADR-compatible frontmatter and solve the problem MADR doesn't: getting active decisions to actually *reach* the agent's context.
 
 ### AGENTS.md / CLAUDE.md
-- AGENTS.md: standard Linux Foundation (Agentic AI Foundation), 20-30+ agenti, markdown libero, regola nearest-file (con divergenze: Codex fa merge root→cwd). Claude Code non lo legge nativamente (serve import/symlink).
-- CLAUDE.md: gerarchia managed/user/project/local, import `@file` (profondità 4), regole path-scoped in `.claude/rules/`, auto-memory con indice MEMORY.md (primi 200 righe/25KB caricati) + topic file on demand, linea guida "sotto 200 righe".
-- **Lezione per ATLAS:** questi file sono il **punto d'aggancio**, non i concorrenti: contengono regole stabili e possono contenere le 5 righe che dicono all'agente "esegui `atlas context` a inizio sessione". Il pattern Claude Code "indice piccolo sempre caricato + dettaglio on demand" è la conferma di prodotto del modello di contesto di ATLAS.
+- AGENTS.md: Linux Foundation standard (Agentic AI Foundation), 20-30+ agents, free-form markdown, nearest-file rule (with divergences: Codex merges root→cwd). Claude Code doesn't read it natively (needs import/symlink).
+- CLAUDE.md: managed/user/project/local hierarchy, `@file` imports (depth 4), path-scoped rules in `.claude/rules/`, auto-memory with a MEMORY.md index (first 200 lines/25KB loaded) + on-demand topic files, "under 200 lines" guideline.
+- **Lesson for ATLAS:** these files are the **hook point**, not competitors: they hold stable rules and can hold the 5 lines that tell the agent "run `atlas context` at session start". Claude Code's "small always-loaded index + on-demand detail" pattern is the product-level confirmation of ATLAS's context model.
 
-### Ruflo (ex claude-flow, ~70k stelle)
-- **Cos'è:** meta-harness di orchestrazione: AgentDB (SQLite + vettori HNSW), swarm gerarchici, ~210 tool MCP, 27 hook, consensus Raft/bizantino.
-- **Criticità (verificate):** overkill dichiarato perfino dai suoi doc per il lavoro normale; benchmark auto-riportati non validati; l'iniezione always-on di memoria è l'esatto anti-obiettivo di ATLAS.
-- **Lezione per ATLAS:** conferma per contrasto: niente DB, niente embeddings, niente daemon, niente MCP obbligatorio.
+### Ruflo (formerly claude-flow, ~70k stars)
+- **What it is:** an orchestration meta-harness: AgentDB (SQLite + HNSW vectors), hierarchical swarms, ~210 MCP tools, 27 hooks, Raft/Byzantine consensus.
+- **Issues (verified):** overkill even by its own docs for normal work; unvalidated self-reported benchmarks; always-on memory injection is the exact anti-goal of ATLAS.
+- **Lesson for ATLAS:** confirmation by contrast: no DB, no embeddings, no daemon, no mandatory MCP.
 
-### Memoria generica (Mem0, Letta/MemGPT, Zep/Graphiti, Cognee)
-Nessuno è pensato per coding agent; tutti convergono su "estrai fatti → store vettoriale/grafo → inietta nel prompt". Il concetto utile da Zep/Graphiti è la **bi-temporalità** (quando un fatto era vero vs quando è stato appreso) — troppo pesante da implementare, ma il principio "i fatti superati si invalidano, non si cancellano" va tenuto.
+### Generic memory (Mem0, Letta/MemGPT, Zep/Graphiti, Cognee)
+None is designed for coding agents; all converge on "extract facts → vector/graph store → inject into the prompt". The useful concept from Zep/Graphiti is **bi-temporality** (when a fact was true vs. when it was learned) — too heavy to implement, but the principle "outdated facts are invalidated, not deleted" is worth keeping.
 
-### Beads (Steve Yegge) — **il vicino più prossimo**
-- Issue tracker git-nativo per agenti: issue come DAG (blocks, parent-child, related, **discovered-from**), ID hash anti-collisione (`bd-a1b2`), **`bd ready`** (lavoro sbloccato, output JSON), compattazione AI dei task chiusi ("memory decay"), `bd prime` (contesto di lavoro), protocollo di fine sessione ("land the plane"). Storage: JSONL in git.
-- **Cosa NON copre:** stato di progetto oltre i task (fase, decisioni, conoscenza, spec), compilazione del contesto oltre la lista dei task pronti.
-- **Verdetto onesto:** se ATLAS si riducesse a task + ready-detection, **sarebbe una reinvenzione di Beads e non varrebbe la pena costruirlo**. Il valore differenziale di ATLAS sta nel livello sopra i task: stato + decisioni + brief compilato. Vedi §14 per l'alternativa "adottare Beads".
+### Beads (Steve Yegge) — **the closest neighbor**
+- Git-native issue tracker for agents: issues as a DAG (blocks, parent-child, related, **discovered-from**), collision-resistant hash IDs (`bd-a1b2`), **`bd ready`** (unblocked work, JSON output), AI compaction of closed tasks ("memory decay"), `bd prime` (working context), end-of-session protocol ("land the plane"). Storage: JSONL in git.
+- **What it does NOT cover:** project state beyond tasks (phase, decisions, knowledge, specs), context compilation beyond the ready-task list.
+- **Honest verdict:** if ATLAS were reduced to tasks + ready-detection, **it would be a reinvention of Beads and not worth building**. ATLAS's differential value is the layer above tasks: state + decisions + compiled brief. See §14 for the "adopt Beads" alternative.
 
-### Cosa manca nell'ecosistema (il divario di ATLAS)
-1. Nessuno strumento risponde in O(1) alla domanda: *"qual è lo stato corrente del progetto?"* — tutti rispondono con log, archivi o retrieval.
-2. Nessuno compila un **brief minimo** cross-artefatto (stato + task + decisioni + puntatori) pensato per il budget di attenzione di un LLM.
-3. Nessuno tratta la **staleness come proprietà misurabile** (stato vs git HEAD) invece che come speranza.
-
----
-
-## 4. Confini del prodotto
-
-### ATLAS È
-- Un **ledger di stato di progetto**: piccolo, versionato in git, leggibile da umani, interrogabile da CLI.
-- Un **compilatore di contesto**: da ledger + git produce un brief minimo sufficiente (testo + JSON).
-- Un **protocollo di handoff** tra sessioni, agenti diversi e umani: chiunque riprende dal ledger, non dalla storia.
-- **Agent-neutral e file-based**: funziona con qualunque agente capace di eseguire un comando o leggere un file.
-- **Adottabile in modo incrementale**: `atlas init` su un repo esistente non richiede ristrutturazioni; convive con TODO.md, docs/, ADR esistenti (li può referenziare).
-
-### ATLAS NON È
-- **Non è un framework SDD**: nessun workflow obbligatorio spec→plan→tasks→implement; le spec sono opzionali e collegate ai task, non riti.
-- **Non è un sistema di memoria/retrieval**: niente embeddings, vettori, knowledge graph, estrazione automatica di fatti.
-- **Non è un orchestratore**: non lancia agenti, non fa swarm, non coordina.
-- **Non è un issue tracker completo**: niente assegnatari, sprint, priorità elaborate, board (se serve quello, meglio Beads o un tracker vero).
-- **Non è documentazione**: non sostituisce docs/, README, ADR; li indicizza.
-- **Non richiede infrastruttura**: nessun server, DB, daemon, MCP obbligatorio, cloud.
+### The ecosystem gap
+1. No tool answers in O(1) the question: *"what is the project's current state?"* — all answer with logs, archives, or retrieval.
+2. No tool compiles a **minimum brief** cross-artifact (state + tasks + decisions + pointers) designed for an LLM's attention budget.
+3. No tool treats **staleness as a measurable property** (state vs. git HEAD) rather than a hope.
 
 ---
 
-## 5. Modello concettuale
+## 4. Product boundaries
 
-Le 7 categorie iniziali (stato, conoscenza, spec, decisioni, task, storia, evidenza) **non devono diventare 7 entità**. Analisi:
+### ATLAS IS
+- A **project state ledger**: small, versioned in git, human-readable, queryable via CLI.
+- A **context compiler**: from ledger + git it produces a minimum sufficient brief (text + JSON).
+- A **handoff protocol** across sessions, different agents, and humans: whoever resumes work starts from the ledger, not from history.
+- **Agent-neutral and file-based**: works with any agent capable of running a command or reading a file.
+- **Incrementally adoptable**: `atlas init` on an existing repo requires no restructuring; it coexists with existing TODO.md, docs/, ADRs (and can reference them).
 
-- **STORIA** non è un'entità: è la *proprietà* di qualsiasi elemento non più attivo (+ git stesso). Non si modella, si archivia.
-- **EVIDENZA** non è un'entità: è un *campo* (link a file/righe/commit/test) sugli elementi che ne hanno bisogno.
-- **STATO CORRENTE** non è un'entità immagazzinata: è una **vista** = elementi attivi + fatti derivati da git. Immagazzinarlo come documento autonomo creerebbe la doppia verità (vedi §7).
-- **SPEC** non merita un'entità di prima classe nell'MVP: l'intento di una feature vive come corpo esteso di un task (o file collegato). I sistemi spec-per-feature sono la fonte principale di deriva documentale (verificato su Spec Kit/OpenSpec). Riaperto in §16 se l'uso lo giustifica.
-- **CONOSCENZA** e **DECISIONE** sono simili (entrambe "cose che l'agente deve sapere") ma con lifecycle diverso: la decisione ha supersession e rationale; la nota di conoscenza è un fatto pratico aggiornabile in place. Si possono unificare in un'unica entità con `type` diverso.
-
-**Modello minimo proposto: 2 entità immagazzinate + 2 viste derivate.**
-
-1. **WORKITEM** (task) — unità di lavoro con lifecycle. Campi: `id` (hash corto anti-collisione, stile Beads), `title`, `status` (todo | doing | blocked | done), `blocked_by` (lista id), `discovered_from` (id, opzionale), corpo markdown libero (può contenere l'intento/spec), `evidence` (opzionale), `summary` (1 riga, compilata alla chiusura).
-2. **CARD** (conoscenza/decisione) — fatto durevole che l'agente deve conoscere. Campi: `id`, `type` (decision | knowledge), `title`, `status` (active | superseded), `superseded_by` (id, per le decision), corpo markdown (per le decision: formato compatibile MADR), `evidence` (opzionale), `hook` (1 riga per l'indice).
-3. **STATE** *(vista, non file autorevole)* — proiezione: goal corrente + workitem attivi/bloccati + card attive (indice) + segnali git (branch, ultimi commit, diff non committato) + valutazione di freshness. Unico frammento *immagazzinato* dello stato: un file `focus` di poche righe (goal corrente, fase, prossima cosa) — l'unica parte che non è derivabile.
-4. **CONTEXT** *(vista, non file)* — il brief compilato da STATE secondo il modello di §8.
-
-**Sfida accolta rispetto all'idea iniziale:** "STATE.md" come documento mantenuto a mano è l'astrazione sbagliata — è esattamente il TODO.md da 2.000 righe che rinasce. Lo stato deve essere *quasi tutto derivato*; solo il "focus" (intento corrente) è dichiarato, perché l'intento non è derivabile da git.
+### ATLAS IS NOT
+- **Not an SDD framework**: no mandatory spec→plan→tasks→implement workflow; specs are optional and linked to tasks, not rituals.
+- **Not a memory/retrieval system**: no embeddings, vectors, knowledge graphs, automatic fact extraction.
+- **Not an orchestrator**: it doesn't launch agents, doesn't swarm, doesn't coordinate.
+- **Not a full issue tracker**: no assignees, sprints, elaborate priorities, boards (if you need that, use Beads or a real tracker).
+- **Not documentation**: it doesn't replace docs/, README, ADRs; it indexes them.
+- **Doesn't require infrastructure**: no server, DB, daemon, mandatory MCP, cloud.
 
 ---
 
-## 6. Ciclo di vita dell'informazione
+## 5. Conceptual model
 
-    creazione → attivo → superseded/done → compattato → storia
+The 7 initial categories (state, knowledge, spec, decisions, tasks, history, evidence) **must not become 7 entities**. Analysis:
 
-- **Creazione:** un comando (`atlas task add`, `atlas card add`) o un file scritto a mano nel formato giusto — le due vie devono essere equivalenti (il CLI è una comodità, non un gatekeeper).
-- **Attivo:** l'elemento è visibile in STATE e candidato al contesto. I workitem `doing` e `blocked` pesano di più dei `todo`.
-- **Chiusura/supersession:** transizione esplicita (`atlas task done X`, `atlas card supersede A B`). Alla chiusura il workitem DEVE ricevere una `summary` di 1 riga (fornita dall'agente/umano che chiude — è il momento in cui il contesto per scriverla esiste già, costo marginale ~zero). È la versione leggera del "memory decay" di Beads.
-- **Compattazione:** gli elementi chiusi escono dai file attivi e finiscono in un log append-only (JSONL o markdown datato). Nel contesto di default sopravvive solo la `summary` dei chiusi *recenti* (ultimi N giorni), come ponte tra sessioni.
-- **Storia:** il log + git. Mai caricata di default; interrogabile (`atlas log`, `git log`). Niente cancellazioni: come per gli ADR, la storia si invalida, non si riscrive.
+- **HISTORY** is not an entity: it's a *property* of any element that is no longer active (+ git itself). It isn't modeled, it's archived.
+- **EVIDENCE** is not an entity: it's a *field* (link to file/lines/commit/test) on the elements that need it.
+- **CURRENT STATE** is not a stored entity: it's a **view** = active elements + facts derived from git. Storing it as a standalone document would recreate the double-truth problem (see §7).
+- **SPEC** doesn't deserve a first-class entity in the MVP: a feature's intent lives as the extended body of a task (or a linked file). Spec-per-feature systems are the main source of documentation drift (verified on Spec Kit/OpenSpec). Reopened in §16 if usage justifies it.
+- **KNOWLEDGE** and **DECISION** are similar (both "things the agent must know") but with different lifecycles: a decision has supersession and rationale; a knowledge note is a practical fact updated in place. They can be unified into a single entity with a different `type`.
 
-Regola di igiene fondamentale: **ogni transizione di stato è anche un'operazione di riduzione del contesto futuro** (chiudere = comprimere). È l'inverso del TODO.md, dove ogni evento *aggiunge* righe.
+**Proposed minimal model: 2 stored entities + 2 derived views.**
 
----
+1. **WORKITEM** (task) — a unit of work with a lifecycle. Fields: `id` (short collision-resistant hash, Beads-style), `title`, `status` (todo | doing | blocked | done), `blocked_by` (list of ids), `discovered_from` (id, optional), free markdown body (can hold intent/spec), `evidence` (optional), `summary` (1 line, filled in on close).
+2. **CARD** (knowledge/decision) — a durable fact the agent must know. Fields: `id`, `type` (decision | knowledge), `title`, `status` (active | superseded), `superseded_by` (id, for decisions), markdown body (for decisions: MADR-compatible format), `evidence` (optional), `hook` (1 line for the index).
+3. **STATE** *(view, not an authoritative file)* — a projection: current goal + active/blocked workitems + active cards (index) + git signals (branch, latest commits, uncommitted diff) + freshness assessment. The only *stored* fragment of state: a `focus` file of a few lines (current goal, phase, next thing) — the only part that isn't derivable.
+4. **CONTEXT** *(view, not a file)* — the brief compiled from STATE per the model in §8.
 
-## 7. Modello di stato
-
-**Definizione:** lo STATO CORRENTE è l'insieme minimo di asserzioni vere *adesso* che non sono ricavabili economicamente dal codice o da git:
-
-1. **Intento:** su cosa stiamo lavorando e perché (focus, poche righe).
-2. **Lavoro:** workitem attivi, bloccati e pronti (derivato dal ledger).
-3. **Vincoli:** decisioni attive che limitano le scelte (indice delle card).
-4. **Terreno:** segnali dal repository — branch, ultimi commit, stato del worktree (derivato da git, mai immagazzinato).
-5. **Affidabilità:** quanto è fresco tutto ciò (derivato: ultima modifica del ledger vs ultimi commit).
-
-**Risposta alla domanda architetturale "cos'è STATE":** una **vista materializzata on demand** — mai un documento mantenuto a mano (deriva), mai un DB (infrastruttura ingiustificata), mai una sintesi scritta da un agente senza struttura (non verificabile). La parte dichiarata (focus) è deliberatamente così piccola che tenerla aggiornata costa meno di una riga di commit message.
-
-**Fonte di verità (domanda §1 dell'input):** stratificata, senza ambiguità:
-- **Fatti sul software** → codice + git. ATLAS non li duplica mai.
-- **Intento e stato del lavoro** → ledger ATLAS.
-- **Vincoli e rationale** → card ATLAS (o ADR esistenti referenziati).
-- In caso di conflitto tra ledger e git, **git vince sui fatti, il ledger vince sull'intento**, e il conflitto stesso è un segnale che ATLAS deve esporre (freshness check), non nascondere.
+**Challenge accepted against the initial idea:** a hand-maintained "STATE.md" document is the wrong abstraction — it's exactly the 2,000-line TODO.md reborn. State must be *almost entirely derived*; only "focus" (current intent) is declared, because intent isn't derivable from git.
 
 ---
 
-## 8. Modello di contesto
+## 6. Information lifecycle
 
-**Definizione:** il MINIMO CONTESTO SUFFICIENTE è il più piccolo insieme di token che permette all'agente di (a) sapere cosa fare, (b) sapere cosa NON fare, (c) sapere **dove guardare** per tutto il resto.
+    creation → active → superseded/done → compacted → history
 
-Principio strutturale (allineato al consenso 2025-26 su context engineering: "smallest set of high-signal tokens", just-in-time retrieval, progressive disclosure):
+- **Creation:** a command (`atlas task add`, `atlas card add`) or a hand-written file in the right format — the two paths must be equivalent (the CLI is a convenience, not a gatekeeper).
+- **Active:** the element is visible in STATE and a candidate for the context. `doing` and `blocked` workitems weigh more than `todo` ones.
+- **Closing/supersession:** an explicit transition (`atlas task done X`, `atlas card supersede A B`). On close, the workitem MUST receive a 1-line `summary` (provided by the agent/human who closes it — it's the moment when the context to write it already exists, at near-zero marginal cost). It's the lightweight version of Beads's "memory decay".
+- **Compaction:** closed elements leave the active files and go into an append-only log (JSONL or dated markdown). By default only the summary of *recently* closed items (last N days) survives in the context, as a bridge between sessions.
+- **History:** the log + git. Never loaded by default; queryable (`atlas log`, `git log`). No deletions: as with ADRs, history is invalidated, not rewritten.
 
-> **Il contesto compilato contiene sintesi e puntatori, mai contenuti integrali.** L'agente moderno è bravissimo a leggere file just-in-time; il collo di bottiglia è sapere *quali* file e *quale* stato. ATLAS fornisce la mappa, non il territorio.
-
-Struttura del brief (budget target: **< 1.500 token** nel caso tipico, hard cap configurabile):
-
-    [FOCUS]      goal corrente, fase                          (~3 righe, dichiarato)
-    [NOW]        workitem doing/blocked + motivo del blocco   (~1 riga ciascuno + path rilevanti)
-    [READY]      workitem sbloccati, in ordine                (1 riga ciascuno)
-    [RULES]      card attive: hook di 1 riga + id             (l'agente apre la card solo se serve)
-    [RECENT]     summary dei chiusi recenti + ultimi commit   (ponte tra sessioni)
-    [GROUND]     branch, worktree sporco/pulito, freshness    (~3 righe, derivato)
-    [POINTERS]   come approfondire: atlas show <id>, path     (~3 righe)
-
-Due formati dello stesso contenuto: **testo** (per iniezione nel prompt, leggibile da umani) e **JSON** (`--json`, per tooling). Il contesto è **parametrico**: `atlas context` = brief generale; `atlas context <id>` = brief centrato su un workitem (il suo corpo integrale + le sole card collegate + i suoi path).
-
-**Sfida accolta:** "context = documento generato dal CLI" è giusto ma con un vincolo che l'idea iniziale non esplicitava — se il compilatore inizia a *includere* conoscenza invece di *puntarla*, ATLAS degenera nel sistema di retrieval che non vuole essere. Il budget di token è un vincolo architetturale di prima classe, non un'ottimizzazione.
+Fundamental hygiene rule: **every state transition is also a future-context-reduction operation** (closing = compressing). It's the inverse of TODO.md, where every event *adds* lines.
 
 ---
 
-## 9. Compilazione del contesto (algoritmo concettuale)
+## 7. State model
 
-Nessuna semantica, nessun embedding: **selezione per stato e per collegamento espliciti**, più segnali git. Deterministico, spiegabile, testabile.
+**Definition:** CURRENT STATE is the minimum set of assertions true *right now* that cannot be economically derived from code or from git:
 
-    input: ledger (workitem, card, focus), repo git, [id target opzionale]
+1. **Intent:** what we're working on and why (focus, a few lines).
+2. **Work:** active, blocked and ready workitems (derived from the ledger).
+3. **Constraints:** active decisions that limit choices (index of cards).
+4. **Ground:** signals from the repository — branch, latest commits, worktree state (derived from git, never stored).
+5. **Reliability:** how fresh all of this is (derived: last ledger modification vs. latest commits).
 
-    1. GROUND    ← branch corrente, HEAD, dirty/clean, ultimi K commit (git, read-only)
-    2. FRESHNESS ← confronto timestamp ledger vs commit recenti;
-                   se il ledger non è toccato da N commit/giorni → flag "stato possibilmente stantio"
+**Answer to the architectural question "what is STATE":** an **on-demand materialized view** — never a hand-maintained document (drifts), never a DB (unjustified infrastructure), never a freeform summary written by an agent (unverifiable). The declared part (focus) is deliberately so small that keeping it up to date costs less than a commit message line.
+
+**Source of truth (§1's architectural question):** layered, unambiguous:
+- **Facts about the software** → code + git. ATLAS never duplicates them.
+- **Intent and work state** → the ATLAS ledger.
+- **Constraints and rationale** → ATLAS cards (or referenced existing ADRs).
+- On conflict between ledger and git, **git wins on facts, the ledger wins on intent**, and the conflict itself is a signal ATLAS must surface (freshness check), not hide.
+
+---
+
+## 8. Context model
+
+**Definition:** the MINIMUM SUFFICIENT CONTEXT is the smallest set of tokens that lets the agent (a) know what to do, (b) know what NOT to do, (c) know **where to look** for everything else.
+
+Structural principle (aligned with the 2025-26 consensus on context engineering: "smallest set of high-signal tokens", just-in-time retrieval, progressive disclosure):
+
+> **The compiled context contains summaries and pointers, never full content.** A modern agent is excellent at reading files just-in-time; the bottleneck is knowing *which* files and *what* state. ATLAS provides the map, not the territory.
+
+Brief structure (target budget: **< 1,500 tokens** in the typical case, configurable hard cap):
+
+    [FOCUS]      current goal, phase                          (~3 lines, declared)
+    [NOW]        doing/blocked workitems + reason for block    (~1 line each + relevant paths)
+    [READY]      unblocked workitems, in order                 (1 line each)
+    [RULES]      active cards: 1-line hook + id                (the agent opens the card only if needed)
+    [RECENT]     summary of recently closed items + latest commits (bridge between sessions)
+    [GROUND]     branch, dirty/clean worktree, freshness        (~3 lines, derived)
+    [POINTERS]   how to dig deeper: atlas show <id>, path       (~3 lines)
+
+Two formats of the same content: **text** (for prompt injection, human-readable) and **JSON** (`--json`, for tooling). The context is **parametric**: `atlas context` = general brief; `atlas context <id>` = brief centered on a workitem (its full body + only the linked cards + its paths).
+
+**Challenge accepted:** "context = a document generated by the CLI" is correct, but with a constraint the initial idea didn't spell out — if the compiler starts *including* knowledge instead of *pointing to it*, ATLAS degenerates into the retrieval system it doesn't want to be. The token budget is a first-class architectural constraint, not an optimization.
+
+---
+
+## 9. Context compilation (conceptual algorithm)
+
+No semantics, no embeddings: **selection by explicit state and links**, plus git signals. Deterministic, explainable, testable.
+
+    input: ledger (workitem, card, focus), git repo, [optional target id]
+
+    1. GROUND    ← current branch, HEAD, dirty/clean, latest K commits (git, read-only)
+    2. FRESHNESS ← compare ledger timestamp vs. recent commits;
+                   if the ledger hasn't been touched in N commits/days → flag "state possibly stale"
     3. ACTIVE    ← workitem status ∈ {doing, blocked}
-       READY     ← workitem todo senza blocked_by aperti (stile `bd ready`)
-    4. RULES     ← card active; se c'è un target, prima le card linkate al target
-    5. RECENT    ← summary dei done negli ultimi N giorni (default piccolo)
-    6. TARGET    ← se richiesto un id: corpo integrale del workitem + evidence + card collegate
-    7. BUDGET    ← rendering nell'ordine FOCUS > NOW > GROUND/FRESHNESS > READY > RULES > RECENT;
-                   se si supera il budget si troncano le sezioni meno prioritarie
-                   (mai FOCUS/NOW), degradando da sintesi a solo-id
-    8. output    ← testo o JSON
+       READY     ← todo workitems with no open blocked_by (Beads-`bd ready`-style)
+    4. RULES     ← active cards; if there's a target, cards linked to the target come first
+    5. RECENT    ← summary of items done in the last N days (small default)
+    6. TARGET    ← if an id is requested: full workitem body + evidence + linked cards
+    7. BUDGET    ← rendering order FOCUS > NOW > GROUND/FRESHNESS > READY > RULES > RECENT;
+                   if the budget is exceeded, lower-priority sections are truncated
+                   (never FOCUS/NOW), degrading from summary to id-only
+    8. output    ← text or JSON
 
-Punti deliberatamente esclusi: retrieval semantico (non necessario con collegamenti espliciti e agenti capaci di grep), ranking probabilistico (opaco), lettura del codice sorgente (compito dell'agente, just-in-time). La selezione per rilevanza sui *file* è delegata ai path citati nei workitem — evidence esplicita, non inferenza.
+Deliberately excluded: semantic retrieval (unnecessary with explicit links and agents capable of grep), probabilistic ranking (opaque), reading source code (the agent's job, just-in-time). Relevance selection over *files* is delegated to the paths cited in workitems — explicit evidence, not inference.
 
 ---
 
-## 10. Modello di repository
+## 10. Repository model
 
-Il più piccolo layout ragionevole — file-based, git-versionato, leggibile e scrivibile a mano:
+The smallest reasonable layout — file-based, git-versioned, readable and writable by hand:
 
     .atlas/
-      focus.md            # 3-10 righe: goal, fase, prossima cosa (unico stato dichiarato)
+      focus.md            # 3-10 lines: goal, phase, next thing (the only declared state)
       work/
-        <id>-<slug>.md    # un workitem attivo per file (frontmatter YAML + corpo markdown)
+        <id>-<slug>.md    # one active workitem per file (YAML frontmatter + markdown body)
       cards/
-        <id>-<slug>.md    # una card per file (frontmatter compatibile MADR per le decision)
-      log.jsonl           # append-only: elementi chiusi compattati (id, title, summary, ts, commit)
-      config.toml         # opzioni minime (budget, N giorni recenti) — opzionale, default sensati
+        <id>-<slug>.md    # one card per file (MADR-compatible frontmatter for decisions)
+      log.jsonl           # append-only: compacted closed elements (id, title, summary, ts, commit)
+      config.toml         # minimal options (budget, N recent days) — optional, sensible defaults
 
-Scelte e razionali:
-- **Un file per elemento attivo** (non un file monolitico): merge git quasi senza conflitti, editabile a mano, diff leggibili. È la lezione di Beads (JSONL/file in git) e di MADR (un file per decisione).
-- **Markdown + frontmatter YAML**: il formato che tutti gli agenti e gli umani già leggono/scrivono; la parte strutturata sta nel frontmatter, la prosa nel corpo. Niente formato binario, niente DB. (Valutato TOML/JSON puri: perdono la prosa; valutato SQLite: infrastruttura e opacità ingiustificate a questa scala — decine di elementi attivi, non migliaia.)
-- **`log.jsonl` append-only** per la storia: economico, greppabile, mai in contesto.
-- **Directory nascosta `.atlas/`**: segnala "gestito da uno strumento" ma resta ispezionabile; in git di default (la condivisione dello stato è il punto; il caso "stato personale non condiviso" è rimandato a §17).
-- **Adozione incrementale**: `atlas init` crea solo `.atlas/focus.md`; tutto il resto nasce al primo uso. Nessun obbligo di migrare TODO/ADR esistenti — le card possono puntarli.
-
----
-
-## 11. Modello CLI
-
-Il CLI più piccolo coerente col modello — **~8 comandi**, due dei quali fanno il 90% del lavoro:
-
-    atlas init                          # crea .atlas/ + installa il contratto in AGENTS.md/CLAUDE.md (blocco marcato, idempotente)
-    atlas seed                          # brownfield: emette il brief di curation che l'agente esegue (§12.2)
-    atlas context [id] [--json]         # IL comando: compila il brief
-    atlas state                         # vista umana dello stato (superset leggibile di context)
-
-    atlas task add "titolo" [--blocked-by id] [--from id]
-    atlas task start|block|done <id> [--summary "..."]   # done richiede summary; start registra branch+claim (§12.1)
-    atlas card add --type decision|knowledge "titolo"
-    atlas card supersede <vecchio> <nuovo>
-    atlas show <id>                     # corpo integrale di un elemento
-
-    atlas doctor                        # freshness + integrità (id orfani, blocchi ciclici, focus vecchio)
-
-Principi:
-- **Ogni comando di lettura ha `--json`.** Gli agenti non devono parsare markdown.
-- **Il CLI non è un gatekeeper:** editare i file a mano è supportato; `atlas doctor` verifica la coerenza invece di impedirla.
-- **Niente sottocomandi di workflow** (no plan/approve/archive/sync): il lifecycle è tutto in `task done` e `card supersede`.
-- Il nome breve dei comandi conta: l'agente li invoca in autonomia e ogni token del comando è contesto.
+Choices and rationale:
+- **One file per active element** (not a monolithic file): near-conflict-free git merges, hand-editable, readable diffs. It's the lesson from Beads (JSONL/files in git) and from MADR (one file per decision).
+- **Markdown + YAML frontmatter**: the format every agent and human already reads/writes; the structured part lives in the frontmatter, the prose in the body. No binary format, no DB. (TOML/pure JSON evaluated: they lose the prose; SQLite evaluated: infrastructure and opacity unjustified at this scale — dozens of active elements, not thousands.)
+- **Append-only `log.jsonl`** for history: cheap, greppable, never in context.
+- **Hidden `.atlas/` directory**: signals "tool-managed" while staying inspectable; in git by default (sharing state is the point; the "unshared personal state" case is deferred to §17).
+- **Incremental adoption**: `atlas init` creates only `.atlas/focus.md`; everything else is created on first use. No obligation to migrate existing TODOs/ADRs — cards can point to them.
 
 ---
 
-## 12. Integrazione con gli agenti
+## 11. CLI model
 
-Meccanismo unico, tre livelli di aggancio — **nessun MCP richiesto**:
+The smallest CLI coherent with the model — **~8 commands**, two of which do 90% of the work:
 
-1. **Bootstrap (obbligatorio, ~5-10 righe), installato da `atlas init` — mai copia-incolla manuale.** Il contratto comportamentale:
-   *"A inizio sessione: `atlas context` → è lo stato corrente. Prima di lavorare su un task: `atlas task start <id>`. Quando finisci: `atlas task done <id> --summary '...'`. Decisione non ovvia: `atlas card add`. Lavoro scoperto: `atlas task add --from <id>`. Prima di chiudere la sessione: aggiorna stati e focus."*
-   `atlas init` lo scrive come **blocco marcato idempotente** (`<!-- atlas:begin --> … <!-- atlas:end -->`) nei file agente rilevati: append ad AGENTS.md se esiste; CLAUDE.md per Claude Code (o import `@AGENTS.md`); creazione di AGENTS.md se non esiste nulla. Rilanciare `init` aggiorna solo il blocco, mai il resto del file (stesso pattern di `openspec update`). Funziona identico per Claude Code, Codex, Cursor, OpenCode: tutti leggono il proprio file di istruzioni ed eseguono comandi shell — il minimo comune denominatore reale dell'ecosistema (verificato: è lo stesso canale usato da Spec Kit/OpenSpec/Beads).
-2. **Comodità per-agente (opzionale):** slash command / skill sottili (`/atlas-context`, `/atlas-done`) generati da `atlas init --integration <agente>`, sul modello Spec Kit. Solo wrapper del CLI, mai logica.
-3. **Fine sessione (protocollo, non software):** il bootstrap include l'equivalente del "land the plane" di Beads: prima di chiudere, aggiorna gli stati e il focus. È qui che si gioca il write-back problem (§13).
+    atlas init                          # creates .atlas/ + installs the contract in AGENTS.md/CLAUDE.md (marked, idempotent block)
+    atlas seed                          # brownfield: emits the curation brief the agent runs (§12.2)
+    atlas context [id] [--json]         # THE command: compiles the brief
+    atlas state                         # human view of state (readable superset of context)
 
-Principio trasversale — **il contratto contiene il *quando*, mai il *come*.** Tutta la logica (atomicità, policy, budget, freshness) vive nel binario; le istruzioni situazionali vivono negli **output del CLI, just-in-time**: un `task start` rifiutato risponde "claimed da feature/a — alternative ready: cd34, ef56"; `atlas context` chiude col promemoria di write-back. Ogni token così speso arriva solo quando è rilevante, invece di pesare su ogni sessione. Metrica di guardia: se servissero 50 righe di istruzioni statiche per usare ATLAS, sarebbe un difetto di design del CLI, non un problema di documentazione.
+    atlas task add "title" [--blocked-by id] [--from id]
+    atlas task start|block|done <id> [--summary "..."]   # done requires a summary; start registers branch+claim (§12.1)
+    atlas card add --type decision|knowledge "title"
+    atlas card supersede <old> <new>
+    atlas show <id>                     # full body of an element
 
-Gli umani usano gli stessi comandi o editano i file. Non c'è un percorso separato "per agenti".
+    atlas doctor                        # freshness + integrity (orphan ids, cyclic blocks, stale focus)
 
----
-
-## 12.1 Concorrenza: worktree, branch e agenti paralleli
-
-Scenario reale (emerso in review): più agenti lavorano in parallelo su worktree/branch diversi dello stesso repo. Con il ledger versionato in git, ogni worktree vede la *propria* copia di `.atlas/`: nascono due problemi distinti, da trattare separatamente.
-
-1. **Race di visibilità** — l'agente B non vede che A (in un altro worktree) ha preso in carico o chiuso un task finché non avviene un merge: READY stantio, doppia presa in carico dello stesso lavoro.
-2. **Conflitti di merge** — due branch modificano gli stessi file di `.atlas/`.
-
-Valutazione delle due proposte sul tavolo:
-
-- **"Esternalizzare il controller fuori dal repository"** — come store primario: no. Si perderebbero versionamento, condivisione col team via git, review dei cambi di stato nelle PR e il principio repository-local (§4). Ma esiste una via di mezzo tecnica: tutti i worktree di un repo condividono la directory git comune (`git rev-parse --git-common-dir`). Un **layer di coordinamento effimero** può vivere lì (`.git/atlas/claims/<task-id>.json` — un file per claim): condiviso istantaneamente tra tutti i worktree della macchina, invisibile a git, senza problemi di merge. L'atomicità è quella del filesystem: acquisire un claim = creazione esclusiva atomica del file — `O_CREAT|O_EXCL` su POSIX, `CreateFile`+`CREATE_NEW` su Windows, esposta in modo portabile da tutti i runtime (Go `O_EXCL`, Rust `create_new`, Node `'wx'`, Python `'x'`; è la stessa primitiva su cui git basa `index.lock` su ogni piattaforma). Una singola operazione atomica: il secondo che ci prova riceve `EEXIST`/`ERROR_FILE_EXISTS`, che è direttamente l'esito semantico "già preso" — **niente mutex, niente logica di retry da nessuna parte, né nel CLI né nell'agente**: si elimina la risorsa condivisa mutabile invece di proteggerla. È una **cache, non verità**: ricostruibile in ogni momento dal ledger; se manca, ATLAS degrada con grazia.
-- **"CLI solo su develop"** — troppo forte se applicato a tutto: ucciderebbe il write-back nel momento in cui il contesto esiste (il `task done --summary` avviene nel worktree della feature; rimandarlo a develop reintroduce esattamente il problema che vogliamo risolvere). Giusto invece se si separa **per classe di operazione** (lo stesso pattern "plan mutations solo da develop" già adottato da tool come aiops-ai-spec).
-
-**Modello proposto — proprietà per binding, coordinamento effimero, piano centralizzato:**
-
-1. **Binding task↔branch:** `atlas task start` registra il branch corrente nel frontmatter (`branch:`). Da quel momento solo quel branch modifica quel file: il CLI rifiuta (o avverte, secondo policy) le modifiche a un workitem preso in carico altrove. Con un-file-per-elemento, i conflitti di merge diventano strutturalmente rari: ogni branch tocca solo i "suoi" file.
-2. **Classi di operazione:**
-   - *Read-only* (`context`, `state`, `show`, `doctor`): sempre consentite, in qualunque worktree — nessun rischio.
-   - *Transizioni del task assegnato al branch* (`start/block/done`, più `task add --from <id>` per il lavoro scoperto durante l'implementazione): consentite nel worktree della feature.
-   - *Mutazioni di piano* (task nuovi scollegati, `card add/supersede`, modifica del focus): raccomandate solo sul branch di integrazione (develop/main). Policy configurabile: `warn` di default (i repo single-dev senza gitflow esistono), `strict` per i team.
-3. **Claims effimeri in `$GIT_COMMON_DIR`:** a `task start` il claim (branch, sessione, timestamp con TTL nel contenuto) viene creato nel layer condiviso; `atlas context` da qualunque worktree lo legge e mostra "in corso altrove". Un `task start` su un task già claimed **fallisce fail-fast con esito semantico** — mai attesa, mai coda: in `--json` restituisce il motivo e le alternative READY (`{"error":"claimed","by":"feature/a","ready":["cd34","ef56"]}`), e l'agente passa ad altro. La valvola per il caso legittimo ("B deve proprio lavorare su quel task", o A è morto prima della scadenza TTL) è `--steal`: esplicita, rumorosa, mai un fallback automatico. Rilascio = cancellazione del file a `done`; i claim orfani scadono per TTL. Risolve la race di visibilità sulla stessa macchina senza server, senza daemon e senza lock bloccanti.
-4. **Limite dichiarato — macchine diverse:** i claim non attraversano le macchine. Lì restano il binding advisory nel frontmatter (versionato, quindi visibile dopo push/pull) e il merge git. Risolverlo davvero richiederebbe un server centrale: fuori scope per principio (§4).
-5. **Merge del log:** `log.jsonl` marcato `merge=union` in `.gitattributes` — gli append da branch diversi si fondono senza conflitto.
-
-Impatto sul resto del documento: §11 (il CLI acquisisce policy e claim implicito in `task start`), §13.3 (riscritto di conseguenza), §15 (il binding entra nell'MVP; il layer claims può slittare alla fase successiva), §17 (nuova questione aperta n.9).
+Principles:
+- **Every read command has `--json`.** Agents shouldn't parse markdown.
+- **The CLI is not a gatekeeper:** hand-editing files is supported; `atlas doctor` checks consistency instead of preventing it.
+- **No workflow subcommands** (no plan/approve/archive/sync): the whole lifecycle is `task done` and `card supersede`.
+- Short command names matter: the agent invokes them autonomously and every token of the command is context.
 
 ---
 
-## 12.2 Seeding di repository esistenti (brownfield)
+## 12. Agent integration
 
-Il caso d'adozione primario non è il progetto greenfield ma il repo maturo: centinaia di file markdown, ADR, TODO monolitici con anni di storia (caso reale di riferimento: ~24k righe di markdown in 284 file, ADR esistenti, un TODO/history enorme). Il triage manuale è impraticabile; serve assistenza LLM. La domanda architetturale è *dove* vive l'LLM.
+A single mechanism, three levels of attachment — **no MCP required**:
 
-**Principio: il binario resta LLM-free.** Chiamate a modelli dentro `atlas` significherebbero API key, dipendenza da un vendor, costi e non-determinismo in un tool deterministico — violazione diretta di agent-neutrality (§4) e "nessuna infrastruttura". L'LLM per il seed c'è già: **è il coding agent dell'utente**.
+1. **Bootstrap (mandatory, ~5-10 lines), installed by `atlas init` — never manual copy-paste.** The behavioral contract:
+   *"At session start: `atlas context` → this is the current state. Before working on a task: `atlas task start <id>`. When done: `atlas task done <id> --summary '...'`. Non-obvious decision: `atlas card add`. Discovered work: `atlas task add --from <id>`. Before closing the session: update states and focus."*
+   `atlas init` writes it as a **marked idempotent block** (`<!-- atlas:begin --> … <!-- atlas:end -->`) in the detected agent files: append to AGENTS.md if it exists; CLAUDE.md for Claude Code (or `@AGENTS.md` import); create AGENTS.md if nothing exists. Re-running `init` updates only the block, never the rest of the file (same pattern as `openspec update`). Works identically for Claude Code, Codex, Cursor, OpenCode: they all read their own instruction file and run shell commands — the real lowest common denominator of the ecosystem (verified: it's the same channel used by Spec Kit/OpenSpec/Beads).
+2. **Per-agent convenience (optional):** thin slash-command/skill wrappers (`/atlas-context`, `/atlas-done`) generated by `atlas init --integration <agent>`, on the Spec Kit model. CLI wrappers only, never logic.
+3. **End of session (protocol, not software):** the bootstrap includes the equivalent of Beads's "land the plane": before closing, update states and focus. This is where the write-back problem plays out (§13).
 
-**Meccanica — `atlas seed` emette, l'agente esegue:**
+Cross-cutting principle — **the contract states the *when*, never the *how*.** All logic (atomicity, policy, budget, freshness) lives in the binary; situational instructions live in the **CLI's output, just-in-time**: a rejected `task start` responds "claimed by feature/a — alternatives ready: cd34, ef56"; `atlas context` closes with a write-back reminder. Every such token is spent only when relevant, instead of weighing on every session. Guard metric: if using ATLAS required 50 lines of static instructions, that would be a CLI design flaw, not a documentation problem.
 
-1. `atlas seed` non chiama nessun modello: **stampa il brief di curation** (applicazione del principio "istruzioni just-in-time dal CLI", §12) — istruzioni per l'agente su cosa inventariare (TODO, docs/, ADR, git log recente) e come triagiare nel modello ATLAS.
-2. L'agente esplora il repo e scrive tramite i normali comandi (`task add`, `card add`, focus) — nessun percorso di scrittura speciale.
-3. `atlas doctor` valida il risultato; l'output vive su un branch/worktree dedicato.
-4. **Gate umano obbligatorio:** il seed è una proposta; l'umano fa pruning e committa. Mai auto-commit — il seed è l'unico momento in cui garbage-in avvelena tutti i contesti futuri.
-
-**Regola anti-delirio — il seed è *lossy by design*, estrae non migra:**
-
-- **Focus:** 5-10 righe su dove è il progetto *oggi*.
-- **Workitem:** solo lavoro aperto e ancora rilevante, con **cap di default (~15)**: se ne servono di più, il triage non è finito. Il materiale storico dei TODO non si importa: resta dov'è.
-- **Card:** solo decisioni ancora vincolanti. Gli ADR esistenti **non si copiano mai**: card = hook di 1 riga + `evidence: docs/adr/NNNN-*.md`. ATLAS li indicizza, non li ingerisce.
-- **File di history:** esplicitamente esclusi; al più una card "lezioni" (2-3 gotcha ancora attuali) + puntatore.
-
-**Legame con l'MVP:** la Fase 0 (§15) *è* il prototipo di questo brief — il seeding del progetto pilota si fa conversazionalmente con l'agente, e ciò che funziona diventa il testo che `atlas seed` stamperà in Fase 1.
+Humans use the same commands or edit the files. There's no separate "for agents" path.
 
 ---
 
-## 13. Failure mode dell'architettura
+## 12.1 Concurrency: worktrees, branches and parallel agents
 
-1. **Write-back mancante (il rischio n.1, comportamentale).** L'agente lavora e non aggiorna il ledger → stato stantio → fiducia persa → abbandono (la spirale di morte di ogni sistema di project knowledge, dai TODO agli ADR). Mitigazioni: costo di aggiornamento ~zero (un comando con summary), istruzioni di bootstrap esplicite, e soprattutto **freshness visibile**: `atlas context` dichiara sempre quanto è vecchio lo stato rispetto a git — lo stato stantio è rilevato, mai spacciato per vero. Non-mitigazione deliberata: niente inferenza automatica dello stato dai diff (inaffidabile, e un'inferenza sbagliata presentata come stato è peggio della staleness dichiarata).
-2. **Doppia verità.** Se il ledger duplica fatti del codice, divergerà. Mitigazione strutturale: il ledger contiene solo intento/vincoli/stato del lavoro; i fatti restano in codice+git (§7).
-3. **Conflitti concorrenti (due agenti/worktree/branch).** Trattazione completa in §12.1. In sintesi: un-file-per-elemento + id hash (collisioni di merge quasi impossibili), binding task↔branch a `task start`, mutazioni di piano confinate al branch di integrazione (policy warn/strict), claims effimeri in `$GIT_COMMON_DIR` per la visibilità tra worktree della stessa macchina, `merge=union` sul log. Caso residuo accettato: agenti su macchine diverse che ignorano il binding advisory → conflitto git normale, visibile e risolvibile.
-4. **Rigonfiamento del contesto (deriva di prodotto).** La tentazione di aggiungere sezioni al brief. Mitigazione: budget di token come vincolo testato (test di regressione sulla dimensione dell'output).
-5. **Card/decisioni stantie.** Stesso destino degli ADR se non c'è pressione alla revisione. Mitigazione parziale: le card passano per il contesto (vengono lette, quindi possono essere contestate); `atlas doctor` segnala card molto vecchie mai toccate. Rischio accettato: non completamente risolvibile da un tool.
-6. **Ledger corrotto/incoerente da edit manuali.** Mitigazione: parsing tollerante + `atlas doctor`; il CLI non presuppone mai di essere l'unico scrittore.
-7. **Focus dimenticato.** Il focus dichiarato è l'unico pezzo che può mentire senza che git lo smentisca direttamente. Mitigazione: è minuscolo (si rilegge in 5 secondi) e la freshness lo copre (ultima modifica visibile).
+Real scenario (surfaced in review): multiple agents work in parallel on different worktrees/branches of the same repo. With the ledger versioned in git, each worktree sees its *own* copy of `.atlas/`: two distinct problems arise, to be treated separately.
 
----
+1. **Visibility race** — agent B doesn't see that A (in another worktree) has claimed or closed a task until a merge happens: stale READY, double-claiming of the same work.
+2. **Merge conflicts** — two branches modify the same `.atlas/` files.
 
-## 14. Alternative considerate
+Evaluation of the two proposals on the table:
 
-1. **Adottare Beads + convenzioni, non costruire nulla.** Beads copre task-DAG, ready-work, compattazione, git-nativo. Si aggiungerebbe: una convenzione per decisioni (MADR) e un focus.md. **Pro:** zero software nuovo, community esistente. **Contro:** manca l'intero livello di compilazione del contesto (il `bd prime` è centrato sui task), manca il modello di card/decisioni, e la dipendenza dal design di un altro progetto (che sta migrando storage, da JSONL a Dolt) limita l'evoluzione; un ATLAS costruito sopra Beads sarebbe di fatto un wrapper attorno a decisioni altrui. **Verdetto: SCARTATA (decisione di prodotto, 2026-08-27).** ATLAS è standalone e possiede il proprio task layer minimale; da Beads si riusano solo le lezioni di design (id hash anti-collisione, ready-detection, summary alla chiusura), non il software. Il costo accettato è reimplementare un task layer semplice — coerente col fatto che i workitem di ATLAS sono deliberatamente più poveri di un issue tracker (§4).
-2. **Nessun CLI: solo una convenzione di file + una skill/prompt.** ATLAS come "spec" (layout `.atlas/` + istruzioni): l'agente stesso legge/scrive i file e compila il brief. **Pro:** zero codice, adozione istantanea. **Contro:** la compilazione del contesto diventa essa stessa un consumo di contesto (l'agente legge tutto per riassumere — il problema che volevamo eliminare); nessun output deterministico/testabile; freshness check impraticabile. Bocciata come prodotto finale, ma è un ottimo **esperimento di validazione pre-codice** (provare il formato su un progetto reale prima di scrivere il CLI).
-3. **MCP server / daemon con indice.** **Pro:** integrazione ricca, query live. **Contro:** infrastruttura, superficie di tool che consuma contesto, esclude gli agenti senza MCP, contraddice il principio 10. Bocciata per l'MVP; eventuale wrapper MCP *sottile sopra il CLI* in futuro (§16).
-4. **Stato derivato al 100% da git (zero ledger).** Sintesi automatica da commit/diff. **Pro:** mai stantio. **Contro:** git registra *cosa è successo*, non *cosa si intende fare* né *perché*; l'inferenza dell'intento è esattamente il tipo di automazione inaffidabile da evitare. Bocciata; sopravvive come componente (GROUND/FRESHNESS).
+- **"Externalize the controller outside the repository"** — as the primary store: no. It would lose versioning, team sharing via git, review of state changes in PRs, and the repository-local principle (§4). But there's a technical middle ground: all worktrees of a repo share the common git directory (`git rev-parse --git-common-dir`). An **ephemeral coordination layer** can live there (`.git/atlas/claims/<task-id>.json` — one file per claim): instantly shared across all worktrees on the machine, invisible to git, with no merge issues. Atomicity is filesystem-level: acquiring a claim = atomic exclusive file creation — `O_CREAT|O_EXCL` on POSIX, `CreateFile`+`CREATE_NEW` on Windows, exposed portably by every runtime (Go `O_EXCL`, Rust `create_new`, Node `'wx'`, Python `'x'`; it's the same primitive git itself uses for `index.lock` on every platform). A single atomic operation: the second attempt gets `EEXIST`/`ERROR_FILE_EXISTS`, which is directly the semantic outcome "already taken" — **no mutex, no retry logic anywhere, neither in the CLI nor in the agent**: the shared mutable resource is eliminated instead of protected. It's a **cache, not truth**: rebuildable at any time from the ledger; if it's missing, ATLAS degrades gracefully.
+- **"CLI only on develop"** — too strong if applied to everything: it would kill write-back exactly when the context for it exists (the `task done --summary` happens in the feature worktree; deferring it to develop reintroduces the exact problem we want to solve). Correct instead if split **by operation class** (the same "plan mutations only from develop" pattern already adopted by tools like aiops-ai-spec).
 
----
+**Proposed model — per-binding ownership, ephemeral coordination, centralized plan:**
 
-## 15. Confine dell'MVP
+1. **Task↔branch binding:** `atlas task start` registers the current branch in the frontmatter (`branch:`). From then on only that branch modifies that file: the CLI rejects (or warns on, per policy) edits to a workitem claimed elsewhere. With one-file-per-element, merge conflicts become structurally rare: each branch touches only "its own" files.
+2. **Operation classes:**
+   - *Read-only* (`context`, `state`, `show`, `doctor`): always allowed, in any worktree — no risk.
+   - *Transitions of the task assigned to the branch* (`start/block/done`, plus `task add --from <id>` for work discovered during implementation): allowed in the feature worktree.
+   - *Plan mutations* (new unlinked tasks, `card add/supersede`, focus edits): recommended only on the integration branch (develop/main). Configurable policy: `warn` by default (single-dev repos without gitflow exist), `strict` for teams.
+3. **Ephemeral claims in `$GIT_COMMON_DIR`:** on `task start` the claim (branch, session, timestamp with TTL in the content) is created in the shared layer; `atlas context` from any worktree reads it and shows "in progress elsewhere". A `task start` on an already-claimed task **fails fast with a semantic outcome** — never waiting, never queuing: in `--json` it returns the reason and READY alternatives (`{"error":"claimed","by":"feature/a","ready":["cd34","ef56"]}`), and the agent moves to something else. The escape valve for the legitimate case ("B really has to work on that task", or A died before the TTL expired) is `--steal`: explicit, noisy, never an automatic fallback. Release = file deletion on `done`; orphaned claims expire via TTL. Solves the same-machine visibility race with no server, no daemon and no blocking locks.
+4. **Declared limit — different machines:** claims don't cross machines. There, only the advisory binding in the frontmatter (versioned, hence visible after push/pull) and the git merge remain. Actually solving it would require a central server: out of scope on principle (§4).
+5. **Log merging:** `log.jsonl` marked `merge=union` in `.gitattributes` — appends from different branches merge without conflict.
 
-**Ipotesi da validare:** "un brief compilato da un ledger minimo riduce materialmente il costo di avvio sessione (token letti e tempo alla prima azione utile) senza degradare la correttezza delle azioni dell'agente."
-
-**Dentro l'MVP (validazione in 2 fasi):**
-- **Fase 0 — senza codice (1-2 settimane su un progetto reale):** layout `.atlas/` compilato a mano + istruzioni bootstrap in CLAUDE.md/AGENTS.md. Il seeding iniziale si fa conversazionalmente con l'agente su un repo brownfield reale: è il prototipo del brief di `atlas seed` (§12.2). Misura: l'agente riparte davvero dal ledger? Il formato regge? Che cosa manca nel brief?
-- **Fase 1 — CLI minimo:** `init` (layout + installazione del blocco bootstrap in AGENTS.md/CLAUDE.md), `seed` (emissione del brief di curation, §12.2), `context [id] [--json]`, `task add/start/done` (con binding branch e claim, §12.1), `card add/supersede`, `show`, `doctor` (solo freshness). Un binario statico in Go, nessuna dipendenza esterna, nessuna integrazione per-agente oltre al blocco di bootstrap.
-
-**Fuori dall'MVP (esplicitamente):** spec come entità, template per-agente, MCP, hook git, import da TODO/ADR esistenti, multi-repo, web UI, qualsiasi automazione di inferenza dello stato.
-
-**Criteri di successo (protocollo di misura in §17.7, baseline reale acquisito):** tassa di ricostruzione (token dall'avvio alla prima azione produttiva) ridotta di >50% rispetto al baseline TODO.md sullo stesso progetto; **contesto medio per richiesta** (cache read ÷ richieste) e numero di compaction per sessione in calo; il brief tipico sta sotto ~1.500 token; in ≥80% delle sessioni l'agente esegue il write-back senza sollecito umano; zero casi di stato stantio non segnalato dal freshness check. Sul costo totale di sessione l'aspettativa onesta è −10/25% (§17.7).
-
-**Criterio di fallimento (onestà):** se in Fase 0 l'agente ignora sistematicamente il ledger o il write-back non avviene, il problema è comportamentale e nessun CLI lo risolve → fermarsi e ripensare il modello di integrazione prima di scrivere codice.
+Impact on the rest of the document: §11 (the CLI gains policy and implicit claiming in `task start`), §13.3 (rewritten accordingly), §15 (the binding enters the MVP; the claims layer can slip to the next phase), §17 (new open question #9).
 
 ---
 
-## 16. Evoluzione futura (senza compromettere il minimo)
+## 12.2 Seeding existing repositories (brownfield)
 
-Ordinate per probabilità di servire davvero; ognuna è additiva, nessuna cambia il modello dati:
+The primary adoption case isn't a greenfield project but a mature repo: hundreds of markdown files, ADRs, monolithic TODOs with years of history (real reference case: ~24k lines of markdown across 284 files, existing ADRs, a huge TODO/history). Manual triage is impractical; it needs LLM assistance. The architectural question is *where* the LLM lives.
 
-1. **Integrazioni per-agente oltre il bootstrap** (`atlas init --integration claude-code|codex|cursor`): slash command/skill wrapper, sul canale già dimostrato da Spec Kit. (L'installazione del blocco bootstrap in AGENTS.md/CLAUDE.md è già nell'MVP; qui si parla solo delle comodità aggiuntive.)
-2. ~~**Import leggero**~~ — assorbito da `atlas seed` (§12.2), promosso in Fase 1: il triage assistito del materiale esistente è compito dell'agente guidato dal brief, non di un parser.
-3. **Spec di prima classe** — **PROMOSSA E DECISA (2026-08-27):** il flusso di lavoro reale dell'utente è spec-driven e i corpi dei workitem non bastano per intenti grandi. Modello scelto: **spec canoniche viventi** in `.atlas/specs/` — una per capability/area, status draft→active→superseded, aggiornate in place con git come storia dei delta; i workitem si collegano via campo `spec:`; il contesto target include la spec del task. MAI spec-per-feature accumulate (l'anti-pattern verificato di Spec Kit). Dettagli implementativi in PLAN.md §S9.
-4. **Hook git opzionali** (post-commit → promemoria di write-back; mai scrittura automatica dello stato).
-5. **Wrapper MCP sottile** sopra il CLI, per gli ambienti dove il comando shell non è disponibile.
-6. **Query sulla storia** (`atlas log --grep`), sempre on demand.
-7. **Multi-progetto / workspace** (aggregazione di più ledger), solo su bisogno reale.
+**Principle: the binary stays LLM-free.** Calling models from inside `atlas` would mean API keys, vendor dependency, cost and non-determinism in a deterministic tool — a direct violation of agent-neutrality (§4) and "no infrastructure". The LLM for seeding already exists: **it's the user's coding agent.**
 
-Linea rossa permanente: nessun daemon, nessun DB server, nessun embedding, nessuna scrittura di stato non richiesta esplicitamente da un umano o da un agente.
+**Mechanics — `atlas seed` emits, the agent executes:**
 
----
+1. `atlas seed` calls no model: it **prints the curation brief** (applying the "just-in-time instructions from the CLI" principle, §12) — instructions for the agent on what to inventory (TODOs, docs/, ADRs, recent git log) and how to triage it into the ATLAS model.
+2. The agent explores the repo and writes via the normal commands (`task add`, `card add`, focus) — no special write path.
+3. `atlas doctor` validates the result; the output lives on a dedicated branch/worktree.
+4. **Mandatory human gate:** the seed is a proposal; the human prunes and commits it. Never auto-commit — the seed is the one moment where garbage-in poisons every future context.
 
-## 17. Questioni aperte (da decidere insieme, non ora)
+**Anti-delusion rule — the seed is *lossy by design*, it extracts rather than migrates:**
 
-1. **Nome e posizione della directory:** `.atlas/` (nascosta) vs `atlas/` (visibile)? In git sempre, o supporto a uno strato locale non versionato (stile CLAUDE.local.md)?
-2. **Lingua/formato del brief:** testo puro vs markdown leggero? Il budget di 1.500 token è quello giusto? Fisso o adattivo?
-3. **Granularità dei workitem:** ATLAS deve scoraggiare task troppo grandi (epic) o è affare dell'utente? Serve `parent` oltre a `blocked_by` e `discovered_from` già nell'MVP?
-4. **Summary alla chiusura: obbligatoria o fortemente raccomandata?** Obbligarla garantisce la qualità del RECENT ma aggiunge attrito nel caso "task banale".
-5. ~~**Rapporto con Beads**~~ — **RISOLTA (2026-08-27):** ATLAS è standalone, nessun wrapper né dipendenza da Beads; se ne riusano solo le lezioni di design (§14.1).
-6. **Stack di implementazione del CLI** — **parzialmente risolta (2026-08-27):** vincolo deciso: binario nativo compilato, niente linguaggi interpretati (il CLI è invocato decine di volte per sessione dagli agenti; l'avvio di un interprete e la gestione delle sue dipendenze sono inaccettabili). Proposta dell'architetto: **Go** (ecosistema nativo della categoria — gh/kubectl/terraform —, cross-compilazione banale per la matrice macOS/Linux/Windows, avvio ~5ms, binario statico singolo, bassa barriera per i contributori; Rust scartato perché il suo vantaggio — performance/memoria — è irrilevante per questo workload). Decisione collegata: interazione con git via **subprocess del `git` di sistema** (come fa `gh`), non libreria embedded — semantica vera di worktree/`--git-common-dir`, e `go-git` ha supporto worktree incompleto. **RISOLTA — confermato Go (2026-08-27).**
-7. **Telemetria di validazione — protocollo definito (2026-08-27), da eseguire in Fase 0.** Baseline reale acquisito da 3 sessioni Claude Code (25-29/07) sul progetto di riferimento: costo $180-409/sessione, di cui **>95% è contesto ri-letto/ri-scritto** (cache read 308-678M token ≈ $93-204/sessione; cache write $64-165) contro input fresco <$1 e output 3-4%. Effetto moltiplicativo verificato: ogni token caricato a inizio sessione viene ri-pagato a ogni richiesta successiva (~30k token di ricostruzione × 1.000 richieste ≈ 30M cache read), più le compaction che ri-pagano la ricostruzione (wall-time 1-2 giorni ⇒ cicli ripetuti). **Protocollo (dai transcript JSONL di Claude Code, N sessioni pre vs post-seed sullo stesso repo):** (1) tassa di ricostruzione = token dall'avvio alla prima azione produttiva — qui vale il target −50% del §15; (2) **contesto medio per richiesta** = cache read ÷ n. richieste (la metrica sintetica principale); (3) compaction per sessione; (4) write-back rate; (5) normalizzazione per ora API o righe cambiate. **Aspettativa onesta sul costo totale: −10/25%** (le letture di codice sono lavoro necessario e restano), ovvero $30-100 su sessioni come quelle del baseline; il target −50% riguarda la sola tassa di avvio. Il beneficio qualitativo (meno context rot, meno compaction) è atteso superiore a quello economico.
-   **Baseline misurato dai transcript (2026-08-27, repo migration-toolkit-v2, sessione principale 03/08: 124 richieste, 22h wall):** contesto medio per richiesta **157.6k token**; prima azione produttiva alla **9ª richiesta** con **~49.5k token** di contesto accumulato (~392k cache read spesi in avvio); **TODO.md ≈ 12.4k token a lettura, riletto 3 volte nella stessa sessione** (~37k totali — la firma del problema: refresh dello stato via ri-lettura della storia, poi trascinata in finestra per ~115 richieste ≈ 1.4M token di cache read); AGENTS.md ~0.6k (già nella taglia giusta). Obiettivo concreto: `atlas context` ≤1.5k sostituisce la componente-stato dei ~50k di avvio e le refresh da 12.4k (−88% su quella componente). **Scan completo di ~/.claude/projects (29 progetti, 8 sessioni con dati, 5 con ≥30 richieste):** mediane — contesto medio per richiesta **127.6k token** (range 64.5k-286.4k), prima azione produttiva alla **13ª richiesta** (range 1-27), contesto a quel punto **66.6k token** (range 49.5k-93.6k). Il pattern è trasversale ai progetti, non specifico di migration-toolkit-v2; caso peggiore: sessione ai-harness a 286k/richiesta, prima azione alla 27ª richiesta. Caveat: le sessioni di luglio del baseline economico non sono più su disco (retention dei transcript o altra macchina) — il baseline economico resta quello degli screenshot, quello strutturale è misurato su 5 sessioni.
-8. **Il nome `card`:** regge per l'unione decisione+conoscenza, o confonde? Alternative: `note`, `fact`, `rule`.
-9. **Concorrenza (§12.1):** la policy sulle mutazioni di piano fuori dal branch di integrazione deve essere `warn` o `strict` di default? Il layer di claims in `$GIT_COMMON_DIR` entra nell'MVP (Fase 1) o slitta, lasciando all'MVP il solo binding task↔branch? Quali branch contano come "di integrazione" (develop? main? configurabile)?
+- **Focus:** 5-10 lines on where the project stands *today*.
+- **Workitem:** only open work still relevant, with a **default cap (~15)**: if more are needed, the triage isn't finished. Historical TODO material isn't imported: it stays where it is.
+- **Card:** only still-binding decisions. Existing ADRs are **never copied**: card = 1-line hook + `evidence: docs/adr/NNNN-*.md`. ATLAS indexes them, it doesn't ingest them.
+- **History files:** explicitly excluded; at most one "lessons" card (2-3 still-relevant gotchas) + a pointer.
+
+**Link to the MVP:** Phase 0 (§15) *is* the prototype of this brief — seeding the pilot project is done conversationally with the agent, and whatever works becomes the text `atlas seed` will print in Phase 1.
 
 ---
 
-*Fonti: ricerca condotta il 2026-08-27 su fonti primarie (repo GitHub, documentazione ufficiale Anthropic/OpenAI/MADR/agents.md, recensioni indipendenti). Citazioni puntuali disponibili nei rapporti di ricerca della sessione.*
+## 13. Architecture failure modes
+
+1. **Missing write-back (risk #1, behavioral).** The agent works and doesn't update the ledger → stale state → lost trust → abandonment (the death spiral of every project-knowledge system, from TODOs to ADRs). Mitigations: near-zero update cost (one command with a summary), explicit bootstrap instructions, and above all **visible freshness**: `atlas context` always states how old the state is relative to git — stale state is detected, never passed off as true. Deliberate non-mitigation: no automatic state inference from diffs (unreliable, and a wrong inference presented as state is worse than declared staleness).
+2. **Double truth.** If the ledger duplicates facts about the code, it will diverge. Structural mitigation: the ledger holds only intent/constraints/work state; facts stay in code+git (§7).
+3. **Concurrent conflicts (two agents/worktrees/branches).** Fully covered in §12.1. In summary: one-file-per-element + hash ids (merge collisions nearly impossible), task↔branch binding on `task start`, plan mutations confined to the integration branch (warn/strict policy), ephemeral claims in `$GIT_COMMON_DIR` for cross-worktree visibility on the same machine, `merge=union` on the log. Accepted residual case: agents on different machines that ignore the advisory binding → a normal git conflict, visible and resolvable.
+4. **Context bloat (product drift).** The temptation to add sections to the brief. Mitigation: token budget as a tested constraint (regression test on output size).
+5. **Stale cards/decisions.** Same fate as ADRs if there's no pressure to review them. Partial mitigation: cards pass through the context (so they get read, hence can be challenged); `atlas doctor` flags very old, never-touched cards. Accepted risk: not fully solvable by a tool.
+6. **Ledger corrupted/inconsistent from manual edits.** Mitigation: tolerant parsing + `atlas doctor`; the CLI never assumes it's the only writer.
+7. **Forgotten focus.** The declared focus is the one piece that can lie without git directly disproving it. Mitigation: it's tiny (re-readable in 5 seconds) and freshness covers it (last-modified is visible).
+
+---
+
+## 14. Alternatives considered
+
+1. **Adopt Beads + conventions, build nothing.** Beads covers task-DAG, ready-work, compaction, git-native. Would add: a convention for decisions (MADR) and a focus.md. **Pros:** zero new software, existing community. **Cons:** it's missing the entire context-compilation layer (`bd prime` is task-centric), it's missing the card/decision model, and depending on another project's design (which is migrating storage, from JSONL to Dolt) limits ATLAS's evolution; an ATLAS built on top of Beads would effectively be a wrapper around someone else's decisions. **Verdict: REJECTED (product decision, 2026-08-27).** See [ADR 0001](adr/0001-standalone-not-built-on-beads.md). ATLAS is standalone and owns its own minimal task layer; from Beads only the design lessons are reused (collision-resistant hash ids, ready-detection, summary on close), not the software. The accepted cost is reimplementing a simple task layer — consistent with ATLAS workitems being deliberately poorer than a full issue tracker (§4).
+2. **No CLI: just a file convention + a skill/prompt.** ATLAS as a "spec" (`.atlas/` layout + instructions): the agent itself reads/writes the files and compiles the brief. **Pros:** zero code, instant adoption. **Cons:** context compilation itself becomes a context cost (the agent reads everything to summarize it — the exact problem we wanted to eliminate); no deterministic/testable output; freshness checking is impractical. Rejected as the final product, but it's a great **pre-code validation experiment** (try the format on a real project before writing the CLI).
+3. **MCP server / daemon with an index.** **Pros:** rich integration, live queries. **Cons:** infrastructure, a tool surface that consumes context, excludes agents without MCP, contradicts principle 10. Rejected for the MVP; a possible thin MCP wrapper *over the CLI* in the future (§16).
+4. **State 100% derived from git (zero ledger).** Automatic synthesis from commits/diffs. **Pros:** never stale. **Cons:** git records *what happened*, not *what is intended* nor *why*; inferring intent is exactly the kind of unreliable automation to avoid. Rejected; survives as a component (GROUND/FRESHNESS).
+
+---
+
+## 15. MVP boundary
+
+**Hypothesis to validate:** "a brief compiled from a minimal ledger materially reduces the cost of starting a session (tokens read and time to first useful action) without degrading the correctness of the agent's actions."
+
+**Inside the MVP (2-phase validation):**
+- **Phase 0 — no code (1-2 weeks on a real project):** `.atlas/` layout compiled by hand + bootstrap instructions in CLAUDE.md/AGENTS.md. The initial seeding is done conversationally with the agent on a real brownfield repo: it's the prototype of the `atlas seed` brief (§12.2). Measure: does the agent actually resume from the ledger? Does the format hold up? What's missing from the brief?
+- **Phase 1 — minimal CLI:** `init` (layout + installing the bootstrap block in AGENTS.md/CLAUDE.md), `seed` (emitting the curation brief, §12.2), `context [id] [--json]`, `task add/start/done` (with branch binding and claims, §12.1), `card add/supersede`, `show`, `doctor` (freshness only). A static Go binary, no external dependencies, no per-agent integration beyond the bootstrap block.
+
+**Outside the MVP (explicitly):** spec as an entity, per-agent templates, MCP, git hooks, import from existing TODOs/ADRs, multi-repo, web UI, any state-inference automation.
+
+**Success criteria (measurement protocol in §17.7, real baseline acquired):** reconstruction tax (tokens from start to first productive action) reduced by >50% vs. the TODO.md baseline on the same project; **average context per request** (cache read ÷ requests) and compactions per session trending down; the typical brief stays under ~1,500 tokens; in ≥80% of sessions the agent performs write-back without a human prompt; zero cases of stale state not flagged by the freshness check. On total session cost the honest expectation is −10/25% (§17.7).
+
+**Failure criterion (honesty):** if in Phase 0 the agent systematically ignores the ledger or write-back doesn't happen, the problem is behavioral and no CLI fixes it → stop and rethink the integration model before writing code.
+
+---
+
+## 16. Future evolution (without compromising the minimum)
+
+Ordered by likelihood of actually being needed; each is additive, none changes the data model:
+
+1. **Per-agent integrations beyond the bootstrap** (`atlas init --integration claude-code|codex|cursor`): slash-command/skill wrappers, on the channel already proven by Spec Kit. (Installing the bootstrap block in AGENTS.md/CLAUDE.md is already in the MVP; this is only about the extra conveniences.)
+2. ~~**Lightweight import**~~ — absorbed by `atlas seed` (§12.2), promoted into Phase 1: assisted triage of existing material is the guided agent's job, not a parser's.
+3. **First-class specs** — **PROMOTED AND DECIDED (2026-08-27):** see [ADR 0003](adr/0003-living-canonical-specs.md). The user's real workflow is spec-driven and workitem bodies aren't enough for large intents. Model chosen: **living canonical specs** in `.atlas/specs/` — one per capability/area, status draft→active→superseded, updated in place with git as the delta history; workitems link via a `spec:` field; the target context includes the task's spec. NEVER accumulated spec-per-feature (the verified Spec Kit anti-pattern). Implementation details in SPEC.md §S9.
+4. **Optional git hooks** (post-commit → write-back reminder; never automatic state writing).
+5. **Thin MCP wrapper** over the CLI, for environments where the shell command isn't available.
+6. **History queries** (`atlas log --grep`), always on demand.
+7. **Multi-project / workspace** (aggregating multiple ledgers), only on real need.
+
+Permanent red line: no daemon, no DB server, no embeddings, no state write not explicitly requested by a human or an agent.
+
+---
+
+## 17. Open questions (to be decided together, not now)
+
+1. **Directory name and location:** `.atlas/` (hidden) vs. `atlas/` (visible)? Always in git, or support for a local unversioned layer (CLAUDE.local.md-style)?
+2. **Brief language/format:** plain text vs. lightweight markdown? Is the 1,500-token budget the right one? Fixed or adaptive?
+3. **Workitem granularity:** should ATLAS discourage overly large tasks (epics), or is that the user's business? Is a `parent` field needed in addition to `blocked_by` and `discovered_from`, already in the MVP?
+4. **Summary on close: mandatory or strongly recommended?** Making it mandatory guarantees RECENT's quality but adds friction for the "trivial task" case.
+5. ~~**Relationship with Beads**~~ — **RESOLVED (2026-08-27):** see [ADR 0001](adr/0001-standalone-not-built-on-beads.md). ATLAS is standalone, no wrapper around and no dependency on Beads; only design lessons are reused (§14.1).
+6. **CLI implementation stack** — **partially resolved (2026-08-27):** see [ADR 0002](adr/0002-go-implementation-git-subprocess.md). Decided constraint: a native compiled binary, no interpreted languages (the CLI is invoked dozens of times per session by agents; interpreter startup and dependency management are unacceptable). Architect's proposal: **Go** (the category's native ecosystem — gh/kubectl/terraform —, trivial cross-compilation for the macOS/Linux/Windows matrix, ~5ms startup, single static binary, low contributor barrier; Rust rejected because its advantage — performance/memory — is irrelevant for this workload). Related decision: interact with git via **subprocess of the system `git`** (as `gh` does), not an embedded library — true worktree/`--git-common-dir` semantics, and `go-git` has incomplete worktree support. **RESOLVED — Go confirmed (2026-08-27).**
+7. **Validation telemetry — protocol defined (2026-08-27), to run in Phase 0.** Real baseline acquired from 3 Claude Code sessions (07/25-29) on the reference project: cost $180-409/session, of which **>95% is re-read/re-written context** (cache read 308-678M tokens ≈ $93-204/session; cache write $64-165) vs. fresh input <$1 and output 3-4%. Verified multiplicative effect: every token loaded at session start gets re-paid on every subsequent request (~30k reconstruction tokens × 1,000 requests ≈ 30M cache read), plus compactions that re-pay reconstruction (wall time 1-2 days ⇒ repeated cycles). **Protocol (from Claude Code JSONL transcripts, N pre- vs. post-seed sessions on the same repo):** (1) reconstruction tax = tokens from start to first productive action — here the −50% target from §15 applies; (2) **average context per request** = cache read ÷ number of requests (the main synthetic metric); (3) compactions per session; (4) write-back rate; (5) normalization per API hour or lines changed. **Honest expectation on total cost: −10/25%** (code reading is necessary work and remains), i.e. $30-100 on sessions like the baseline's; the −50% target applies only to the startup tax. The qualitative benefit (less context rot, fewer compactions) is expected to exceed the economic one.
+   **Baseline measured from transcripts (2026-08-27, migration-toolkit-v2 repo, main session 08/03: 124 requests, 22h wall):** average context per request **157.6k tokens**; first productive action at request **#9** with **~49.5k tokens** of accumulated context (~392k cache read spent at startup); **TODO.md ≈ 12.4k tokens per read, re-read 3 times in the same session** (~37k total — the problem's signature: state refresh via re-reading history, then dragged in the window for ~115 requests ≈ 1.4M tokens of cache read); AGENTS.md ~0.6k (already the right size). Concrete goal: `atlas context` ≤1.5k replaces the state component of the ~50k startup and the 12.4k refreshes (−88% on that component). **Full scan of ~/.claude/projects (29 projects, 8 sessions with data, 5 with ≥30 requests):** medians — average context per request **127.6k tokens** (range 64.5k-286.4k), first productive action at request **#13** (range 1-27), context at that point **66.6k tokens** (range 49.5k-93.6k). The pattern is cross-project, not specific to migration-toolkit-v2; worst case: the ai-harness session at 286k/request, first action at request #27. Caveat: the baseline's July sessions are no longer on disk (transcript retention or a different machine) — the economic baseline remains the one from screenshots, the structural one is measured from 5 sessions.
+8. **The name `card`:** does it hold up for the decision+knowledge union, or is it confusing? Alternatives: `note`, `fact`, `rule`.
+9. **Concurrency (§12.1):** should the policy on plan mutations outside the integration branch default to `warn` or `strict`? Does the claims layer in `$GIT_COMMON_DIR` enter the MVP (Phase 1), or does it slip, leaving only the task↔branch binding in the MVP? Which branches count as "integration" (develop? main? configurable)?
+
+---
+
+*Sources: research conducted on 2026-08-27 from primary sources (GitHub repos, official Anthropic/OpenAI/MADR/agents.md documentation, independent reviews). Detailed citations available in the session's research reports.*

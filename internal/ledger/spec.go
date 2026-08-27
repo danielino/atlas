@@ -9,7 +9,7 @@ import (
 )
 
 // Spec is the frontmatter+body model for a living canonical spec file
-// under .atlas/specs/<id>-<slug>.md (PLAN.md S9.1). Unlike a Workitem's
+// under .atlas/specs/<id>-<slug>.md (SPEC.md S9.1). Unlike a Workitem's
 // body, a Spec's body IS the specification: one document per
 // capability/area, updated in place; the history of changes lives in git,
 // never as accumulated spec-per-feature files.

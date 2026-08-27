@@ -1,5 +1,5 @@
 // Package doctor implements the integrity checks run by `atlas doctor`
-// (PLAN.md S2): orphan id references, blocked_by cycles, done workitems
+// (SPEC.md S2): orphan id references, blocked_by cycles, done workitems
 // stranded in work/, log entries missing a required summary, focus
 // staleness (S5.2), expired or dangling claims (auto-removed), stale
 // active cards, malformed frontmatter, and duplicate ids. It never
@@ -46,7 +46,7 @@ type Issue struct {
 }
 
 // Report is the full result of a doctor run, grouped by severity per
-// PLAN.md S2. Errors, Warnings and Fixed are never nil so they marshal
+// SPEC.md S2. Errors, Warnings and Fixed are never nil so they marshal
 // to `[]`, not `null`, even when empty.
 type Report struct {
 	Errors   []Issue  `json:"errors"`
@@ -55,7 +55,7 @@ type Report struct {
 }
 
 // HasErrors reports whether the report contains at least one error.
-// Per PLAN.md S2 this is what decides `atlas doctor`'s exit code
+// Per SPEC.md S2 this is what decides `atlas doctor`'s exit code
 // (3 if true; warnings alone do not affect it).
 func (r Report) HasErrors() bool {
 	return len(r.Errors) > 0
