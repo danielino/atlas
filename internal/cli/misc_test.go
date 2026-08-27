@@ -7,6 +7,26 @@ import (
 	"github.com/danielino/atlas/internal/testutil"
 )
 
+func TestVersion_FlagPrintsVersion(t *testing.T) {
+	old := Version
+	Version = "1.2.3"
+	defer func() { Version = old }()
+
+	stdout, _, code := ExecuteCapture([]string{"--version"})
+	if code != 0 {
+		t.Fatalf("--version failed with code %d", code)
+	}
+	if !strings.Contains(stdout, "1.2.3") {
+		t.Errorf("expected version 1.2.3 in output, got: %s", stdout)
+	}
+}
+
+func TestVersion_DefaultsToDev(t *testing.T) {
+	if Version != "dev" {
+		t.Errorf("expected default Version to be \"dev\" when not set via -ldflags, got: %q", Version)
+	}
+}
+
 func TestSeed_PrintsTextAndJSON(t *testing.T) {
 	initRepo(t)
 

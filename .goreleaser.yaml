@@ -1,0 +1,60 @@
+version: 2
+
+project_name: atlas
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: atlas
+    main: ./cmd/atlas
+    binary: atlas
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/danielino/atlas/internal/cli.Version=v{{.Version}}
+
+archives:
+  - id: atlas
+    ids:
+      - atlas
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  use: github
+  groups:
+    - title: "Features"
+      regexp: '^feat(\([^)]*\))?!?:'
+      order: 0
+    - title: "Fixes"
+      regexp: '^fix(\([^)]*\))?!?:'
+      order: 1
+    - title: "Other"
+      order: 999
+  filters:
+    exclude:
+      - "^chore"
+      - "^docs"
+      - "^test"
+      - "^ci"
+      - "^style"
+
+release:
+  name_template: "v{{ .Version }}"

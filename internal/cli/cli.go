@@ -30,6 +30,12 @@ func (e *ExitError) Error() string {
 	return fmt.Sprintf("cli: exit %d", e.Code)
 }
 
+// Version is the atlas build version, set at release-build time via
+// -ldflags "-X github.com/danielino/atlas/internal/cli.Version=vX.Y.Z"
+// (see .goreleaser.yaml). "dev" identifies a non-release build (e.g. `go
+// run`/`go build` without ldflags), never a released binary.
+var Version = "dev"
+
 // NewRootCmd assembles the `atlas` root command and every subcommand.
 // A fresh tree is built on every call so repeated invocations (as in
 // tests) never see stale flag state from a previous run.
@@ -37,6 +43,7 @@ func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "atlas",
 		Short:         "ATLAS — a lossy, file-based project ledger for coding agents",
+		Version:       Version,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
