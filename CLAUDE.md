@@ -57,14 +57,17 @@ internal/testutil/  SetupRepo/SetupWorktree (temp git repos for tests)
 - CI (`.github/workflows/ci.yml`) runs on every push/PR to `main`/`develop`:
   build, vet, gofmt check, `go test -race`, and the 70% coverage gate. Same
   checks a human runs locally before committing — CI just enforces them.
-- Release is fully automatic from `main`: `release-tag.yml` computes the next
+- Release is fully automatic from `main`: `release.yml` computes the next
   SemVer tag from Conventional Commits since the last tag (`fix`→patch,
   `feat`→minor, `!`/`BREAKING CHANGE`→major; any other type alone triggers no
-  release) and pushes it; the tag push triggers `release.yml`, which runs
-  GoReleaser (`.goreleaser.yaml`) to build linux/darwin/windows ×
-  amd64/arm64 binaries and publish a GitHub Release with a changelog grouped
-  by commit type. Never hand-edit a tag or a release — if the automation is
-  wrong, fix the workflow/config, don't patch around it.
+  release), tags, and runs GoReleaser (`.goreleaser.yaml`) — all in the same
+  job/run, deliberately: a tag pushed with the default `GITHUB_TOKEN` cannot
+  trigger a second workflow (GitHub disables token-triggered recursive
+  runs), so tag-then-release must not be split across two workflows.
+  GoReleaser builds linux/darwin/windows × amd64/arm64 binaries and publishes
+  a GitHub Release with a changelog grouped by commit type. Never hand-edit
+  a tag or a release — if the automation is wrong, fix the workflow/config,
+  don't patch around it.
 - `internal/cli.Version` is set via `-ldflags -X` at release-build time only
   (`goreleaser`); it stays `"dev"` for `go build`/`go run` and is what
   `atlas --version` prints.
