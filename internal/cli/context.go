@@ -70,6 +70,18 @@ func runContextTarget(cmd *cobra.Command, root, id string, st state.State, cfg l
 		return failIO(cmd, useJSON, err)
 	}
 
+	var spec *ledger.Spec
+	if w.Spec != "" {
+		loaded, err := ledger.LoadSpec(root, w.Spec)
+		if err == nil {
+			spec = &loaded
+		} else if !errors.Is(err, ledger.ErrNotFound) {
+			return failIO(cmd, useJSON, err)
+		}
+		// A dangling spec reference is a doctor-level problem, not a
+		// reason to fail `context`: just render without it.
+	}
+
 	if useJSON {
 		related := relatedCardsFor(w, cards)
 		doc := map[string]any{
@@ -85,6 +97,7 @@ func runContextTarget(cmd *cobra.Command, root, id string, st state.State, cfg l
 				"evidence":        w.Evidence,
 				"summary":         w.Summary,
 				"reason":          w.Reason,
+				"spec":            w.Spec,
 				"body":            w.Body,
 			},
 			"rules": relatedCardsJSON(related),
@@ -95,6 +108,14 @@ func runContextTarget(cmd *cobra.Command, root, id string, st state.State, cfg l
 				"elsewhere": st.Ground.Elsewhere,
 			},
 		}
+		if spec != nil {
+			doc["spec"] = map[string]any{
+				"id":     spec.ID,
+				"title":  spec.Title,
+				"status": spec.Status,
+				"body":   spec.Body,
+			}
+		}
 		data, err := json.MarshalIndent(doc, "", "  ")
 		if err != nil {
 			return failIO(cmd, true, err)
@@ -103,7 +124,7 @@ func runContextTarget(cmd *cobra.Command, root, id string, st state.State, cfg l
 		return nil
 	}
 
-	fmt.Fprint(cmd.OutOrStdout(), contextc.RenderTarget(st, w, cards, cfg, nil))
+	fmt.Fprint(cmd.OutOrStdout(), contextc.RenderTarget(st, w, cards, spec, cfg, nil))
 	return nil
 }
 

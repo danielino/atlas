@@ -59,12 +59,28 @@ agent — atlas itself never calls an LLM and makes no network calls.
          --hook "See CHANGELOG.md and docs/adr/ for closed decisions" \
          --evidence CHANGELOG.md
 
+   SPECS: only for capabilities/areas with a genuinely LIVING intent —
+   something still being shaped, not a capability that is simply done. Cap
+   yourself at roughly 5 specs at seed time; most projects need zero or one.
+   If a written spec/design doc already exists, reference it via --evidence
+   — never copy its text into the spec body. A spec MUST follow a decision
+   (S9.8): create the governing decision card FIRST, then the spec that
+   references it via --decision.
+     Example:
+       atlas card add --type decision "Adopt bounded-retry workload model" \
+         --hook "Retries are capped, never infinite" \
+         --evidence docs/adr/0034-enrichment-stage.md
+       atlas spec add "Workload execution retry semantics" \
+         --decision <the-decision-id-just-created> \
+         --evidence docs/design/retry.md
+       atlas spec activate <the-new-spec-id>
+
 3. WORK ON A DEDICATED BRANCH. Do not curate directly on main/develop:
      git checkout -b atlas/seed
 
 4. USE THE CLI ONLY. Every write goes through "atlas task add", "atlas
-   card add", or an edit to .atlas/focus.md — never hand-craft files under
-   .atlas/work or .atlas/cards directly.
+   card add", "atlas spec add", or an edit to .atlas/focus.md — never
+   hand-craft files under .atlas/work, .atlas/cards or .atlas/specs directly.
 
 5. FINISH WITH A HEALTH CHECK:
      atlas doctor

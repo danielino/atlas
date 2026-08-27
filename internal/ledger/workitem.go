@@ -21,6 +21,7 @@ type Workitem struct {
 	Evidence       []string `yaml:"evidence,omitempty"`
 	Summary        string   `yaml:"summary"`
 	Reason         string   `yaml:"reason,omitempty"`
+	Spec           string   `yaml:"spec,omitempty"`
 	Body           string   `yaml:"-"`
 }
 

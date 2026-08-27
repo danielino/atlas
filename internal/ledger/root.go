@@ -34,14 +34,17 @@ func FindRoot(start string) (string, error) {
 	}
 }
 
-// EnsureDirs creates the standard .atlas subdirectories (work/, cards/) under
-// root if they do not already exist.
+// EnsureDirs creates the standard .atlas subdirectories (work/, cards/,
+// specs/) under root if they do not already exist.
 func EnsureDirs(root string) error {
 	atlasDir := filepath.Join(root, ".atlas")
 	if err := os.MkdirAll(filepath.Join(atlasDir, "work"), 0o755); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Join(atlasDir, "cards"), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Join(atlasDir, "specs"), 0o755); err != nil {
 		return err
 	}
 	return nil

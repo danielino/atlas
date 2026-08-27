@@ -153,6 +153,32 @@ func overBudgetState() state.State {
 	return s
 }
 
+// specsState is fullState() plus a SPECS section: one draft and one active
+// spec, exercising the general brief's new S9.3 section in an otherwise
+// fully-populated fixture.
+func specsState() state.State {
+	s := fullState()
+	s.Specs = []state.SpecSummary{
+		{Spec: ledger.Spec{ID: "3fa9", Title: "Workload execution retry semantics", Status: "draft", Created: "2026-08-20"}, OpenTasks: 0},
+		{Spec: ledger.Spec{ID: "77aa", Title: "Claim lifecycle and TTL handling", Status: "active", Created: "2026-08-10"}, OpenTasks: 2},
+	}
+	return s
+}
+
+// overBudgetSpecsState is overBudgetState() plus enough SPECS content to
+// force the S9.3 SPECS-reduction degradation step on its own, independent
+// of overBudgetState (which stays untouched so its existing goldens don't
+// move).
+func overBudgetSpecsState() state.State {
+	s := overBudgetState()
+	s.Specs = []state.SpecSummary{
+		{Spec: ledger.Spec{ID: "3fa9", Title: "Workload execution retry semantics", Status: "draft", Created: "2026-08-20"}, OpenTasks: 0},
+		{Spec: ledger.Spec{ID: "77aa", Title: "Claim lifecycle and TTL handling policy", Status: "active", Created: "2026-08-10"}, OpenTasks: 2},
+		{Spec: ledger.Spec{ID: "88bb", Title: "Context budget degradation ladder ordering", Status: "active", Created: "2026-08-05"}, OpenTasks: 1},
+	}
+	return s
+}
+
 func readyID(i int) string {
 	const hex = "0123456789abcdef"
 	return string([]byte{hex[i%16], hex[(i/16)%16], hex[(i/256)%16], hex[(i/4096)%16]})

@@ -301,3 +301,39 @@ func TestNewestMtime_MissingDir_NotFound(t *testing.T) {
 	require.False(t, found)
 	require.True(t, newest.IsZero())
 }
+
+func TestBuild_Specs_DraftAndActiveIncluded_SupersededExcluded(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, ledger.EnsureDirs(dir))
+	require.NoError(t, ledger.SaveSpec(dir, ledger.Spec{ID: "3fa9", Title: "Draft spec", Status: "draft", Created: "2026-08-27"}))
+	require.NoError(t, ledger.SaveSpec(dir, ledger.Spec{ID: "a1a1", Title: "Active spec", Status: "active", Created: "2026-08-27"}))
+	require.NoError(t, ledger.SaveSpec(dir, ledger.Spec{ID: "b2b2", Title: "Old spec", Status: "superseded", SupersededBy: "a1a1", Created: "2026-08-01"}))
+
+	s, err := Build(dir, ledger.DefaultConfig(), Options{})
+	require.NoError(t, err)
+	require.Len(t, s.Specs, 2)
+	require.Equal(t, "3fa9", s.Specs[0].ID)
+	require.Equal(t, "a1a1", s.Specs[1].ID)
+}
+
+func TestBuild_Specs_OpenTaskCount(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, ledger.EnsureDirs(dir))
+	require.NoError(t, ledger.SaveSpec(dir, ledger.Spec{ID: "3fa9", Title: "Spec", Status: "active", Created: "2026-08-27"}))
+	require.NoError(t, ledger.SaveWorkitem(dir, ledger.Workitem{ID: "aaaa", Title: "linked 1", Status: "todo", Created: "2026-08-27", Spec: "3fa9"}))
+	require.NoError(t, ledger.SaveWorkitem(dir, ledger.Workitem{ID: "bbbb", Title: "linked 2", Status: "doing", Created: "2026-08-27", Spec: "3fa9"}))
+	require.NoError(t, ledger.SaveWorkitem(dir, ledger.Workitem{ID: "cccc", Title: "unlinked", Status: "todo", Created: "2026-08-27"}))
+
+	s, err := Build(dir, ledger.DefaultConfig(), Options{})
+	require.NoError(t, err)
+	require.Len(t, s.Specs, 1)
+	require.Equal(t, 2, s.Specs[0].OpenTasks)
+}
+
+func TestBuild_Specs_EmptyWhenNoneExist(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, ledger.EnsureDirs(dir))
+	s, err := Build(dir, ledger.DefaultConfig(), Options{})
+	require.NoError(t, err)
+	require.Empty(t, s.Specs)
+}

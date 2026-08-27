@@ -395,7 +395,7 @@ Ordinate per probabilità di servire davvero; ognuna è additiva, nessuna cambia
 
 1. **Integrazioni per-agente oltre il bootstrap** (`atlas init --integration claude-code|codex|cursor`): slash command/skill wrapper, sul canale già dimostrato da Spec Kit. (L'installazione del blocco bootstrap in AGENTS.md/CLAUDE.md è già nell'MVP; qui si parla solo delle comodità aggiuntive.)
 2. ~~**Import leggero**~~ — assorbito da `atlas seed` (§12.2), promosso in Fase 1: il triage assistito del materiale esistente è compito dell'agente guidato dal brief, non di un parser.
-3. **Spec di prima classe** solo se la Fase 0/1 mostra che i corpi dei workitem non bastano per intenti grandi — nel qual caso: modello a due livelli alla OpenSpec (corrente + delta), mai spec-per-feature accumulate.
+3. **Spec di prima classe** — **PROMOSSA E DECISA (2026-08-27):** il flusso di lavoro reale dell'utente è spec-driven e i corpi dei workitem non bastano per intenti grandi. Modello scelto: **spec canoniche viventi** in `.atlas/specs/` — una per capability/area, status draft→active→superseded, aggiornate in place con git come storia dei delta; i workitem si collegano via campo `spec:`; il contesto target include la spec del task. MAI spec-per-feature accumulate (l'anti-pattern verificato di Spec Kit). Dettagli implementativi in PLAN.md §S9.
 4. **Hook git opzionali** (post-commit → promemoria di write-back; mai scrittura automatica dello stato).
 5. **Wrapper MCP sottile** sopra il CLI, per gli ambienti dove il comando shell non è disponibile.
 6. **Query sulla storia** (`atlas log --grep`), sempre on demand.

@@ -46,6 +46,7 @@ const bootstrapBody = `## ATLAS
 - When you finish a task: ` + "`atlas task done <id> --summary \"one line on what changed\"`" + `.
 - Made a non-obvious decision? ` + "`atlas card add --type decision \"title\" --hook \"one-line summary\"`" + `.
 - Discovered new work? ` + "`atlas task add \"title\" --from <current-task-id>`" + `.
+- Working from a spec? Link tasks with ` + "`atlas task add --spec <id>`" + `; ` + "`atlas context <task-id>`" + ` will include it.
 - Before ending the session: update task states and, if the goal changed, ` + "`.atlas/focus.md`" + `.
 - Use ` + "`--json`" + ` on read commands. Never edit files under ` + "`.atlas/`" + ` by hand: use the CLI.
 `

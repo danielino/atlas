@@ -66,11 +66,12 @@ func randomHexID(entropy io.Reader, n int) (string, error) {
 var RandReader io.Reader = rand.Reader
 
 // ExistingIDs returns the set of ids already in use: workitem files in
-// work/, card files in cards/, and entries in log.jsonl.
+// work/, card files in cards/, spec files in specs/, and entries in
+// log.jsonl.
 func ExistingIDs(root string) (map[string]struct{}, error) {
 	ids := make(map[string]struct{})
 
-	for _, dir := range []string{"work", "cards"} {
+	for _, dir := range []string{"work", "cards", "specs"} {
 		entries, err := os.ReadDir(filepath.Join(root, ".atlas", dir))
 		if err != nil {
 			if os.IsNotExist(err) {

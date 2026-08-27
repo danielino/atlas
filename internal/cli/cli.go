@@ -47,6 +47,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newStateCmd())
 	root.AddCommand(newTaskCmd())
 	root.AddCommand(newCardCmd())
+	root.AddCommand(newSpecCmd())
 	root.AddCommand(newShowCmd())
 	root.AddCommand(newLogCmd())
 	root.AddCommand(newDoctorCmd())
@@ -59,7 +60,20 @@ func NewRootCmd() *cobra.Command {
 // error, 2 semantic refusal). It never panics and never calls os.Exit
 // itself, so it is safe to call from tests.
 func Execute(args []string, stdout, stderr io.Writer) int {
+	return execute(args, nil, stdout, stderr)
+}
+
+// ExecuteWithStdin is Execute with an explicit stdin reader, for commands
+// that support `--body -` (read the value from stdin).
+func ExecuteWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	return execute(args, stdin, stdout, stderr)
+}
+
+func execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	root := NewRootCmd()
+	if stdin != nil {
+		root.SetIn(stdin)
+	}
 	root.SetOut(stdout)
 	root.SetErr(stderr)
 	root.SetArgs(args)
@@ -86,6 +100,14 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 func ExecuteCapture(args []string) (stdout, stderr string, code int) {
 	var outBuf, errBuf bytes.Buffer
 	code = Execute(args, &outBuf, &errBuf)
+	return outBuf.String(), errBuf.String(), code
+}
+
+// ExecuteCaptureStdin is ExecuteCapture with a stdin string, for testing
+// `--body -` handling.
+func ExecuteCaptureStdin(args []string, stdin string) (stdout, stderr string, code int) {
+	var outBuf, errBuf bytes.Buffer
+	code = ExecuteWithStdin(args, strings.NewReader(stdin), &outBuf, &errBuf)
 	return outBuf.String(), errBuf.String(), code
 }
 

@@ -96,6 +96,17 @@ func renderStateText(st state.State, workitems []ledger.Workitem) string {
 		}
 	}
 
+	if len(st.Specs) > 0 {
+		b.WriteString("## SPECS\n")
+		for _, s := range st.Specs {
+			line := fmt.Sprintf("- [%s] %s (%s, %d open tasks)", s.ID, s.Title, s.Status, s.OpenTasks)
+			if len(s.Decisions) > 0 {
+				line += " — decisions: " + strings.Join(s.Decisions, ", ")
+			}
+			b.WriteString(line + "\n")
+		}
+	}
+
 	if st.Ground.Branch != "" {
 		worktree := "clean"
 		if st.Ground.Dirty {
@@ -150,6 +161,21 @@ func renderStateJSON(st state.State, workitems []ledger.Workitem) ([]byte, error
 		elsewhere = append(elsewhere, map[string]any{"id": e.ID, "branch": e.Branch})
 	}
 
+	specs := make([]map[string]any, 0, len(st.Specs))
+	for _, s := range st.Specs {
+		decisions := s.Decisions
+		if decisions == nil {
+			decisions = []string{}
+		}
+		specs = append(specs, map[string]any{
+			"id":         s.ID,
+			"title":      s.Title,
+			"status":     s.Status,
+			"open_tasks": s.OpenTasks,
+			"decisions":  decisions,
+		})
+	}
+
 	recent := st.RecentClosed
 	if recent == nil {
 		recent = []ledger.LogEntry{}
@@ -159,6 +185,7 @@ func renderStateJSON(st state.State, workitems []ledger.Workitem) ([]byte, error
 		"focus":        st.Focus,
 		"workitems":    items,
 		"active_cards": cards,
+		"specs":        specs,
 		"ground": map[string]any{
 			"branch":      st.Ground.Branch,
 			"head":        st.Ground.Head,

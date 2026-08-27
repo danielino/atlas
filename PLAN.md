@@ -185,5 +185,57 @@ Funzioni: `Root(dir)`, `CommonDir(dir)` (`git rev-parse --git-common-dir`, path 
 3. **F3 — state + contextc:** ready/freshness (S5.2) e compilatore (S5) in TDD con golden test. Commit `feat(context): state derivation and budgeted context compiler`.
 4. **F4 — CLI completa:** tutti i comandi (S2), bootstrap (S3), seed (S4), policy, in TDD con test d'integrazione. Commit `feat(cli): full command surface`.
 5. **F5 — doctor + hardening:** doctor completo, riempimento gap di coverage fino a ≥70%, `go vet`, README.md (installazione, comandi, formato file), smoke test end-to-end in un repo temporaneo (init→seed→task add/start/done→context→doctor). Commit `feat(doctor): integrity checks; docs and coverage hardening`.
+6. **F6 — spec management:** S9 completo in TDD (entità spec, comandi, integrazione context/state/doctor, bootstrap e seed aggiornati, README). Commit `feat(spec): living canonical specs linked to workitems`.
 
 Regole per ogni fase: non modificare file di fasi precedenti se non necessario; suite SEMPRE verde a fine fase (`go test ./...`); riportare coverage di fase.
+
+## S9. Spec management (fase F6 — estende S1/S2/S3/S5)
+
+Motivazione: il flusso di lavoro dell'utente è spec-driven; i corpi dei workitem non bastano per intenti grandi (ANALYSIS §16.3, deciso 2026-08-27). Modello: **spec canoniche viventi** — una per capability/area, aggiornate in place; la storia dei delta è git. MAI spec-per-feature accumulate. Tutte le stringhe user-facing in INGLESE.
+
+**S9.1 Dato.** `.atlas/specs/<id>-<slug>.md`, stesso spazio ID hex (collision check esteso a specs/):
+```markdown
+---
+id: 3fa9
+title: Workload execution retry semantics
+status: draft        # draft | active | superseded
+superseded_by: ""
+created: 2026-08-27
+evidence: []
+---
+Body = la specifica (markdown libero, documento vivente).
+```
+Workitem: nuovo campo opzionale `spec: <id>`. `task add --spec <id>` valida che la spec esista e non sia superseded: exit 2 `{"error":"spec_not_found"}` / `{"error":"spec_superseded","superseded_by":"..."}`.
+
+**S9.2 Comandi** (convenzioni S2; policy plan-mutation su add/activate/update/supersede, mai su list/show):
+- `atlas spec add "title" [--body -|text] [--evidence p1,p2]` → crea draft, stampa id.
+- `atlas spec activate <id>` → draft→active (exit 2 se superseded o già active? no: idempotente su active, exit 2 solo su superseded).
+- `atlas spec update <id> [--title t] [--body -|text] [--evidence ...]` → aggiorna in place; rifiutato su superseded (exit 2). `--body -` legge stdin.
+- `atlas spec supersede <old> <new>` → old→superseded + superseded_by; evento in log.jsonl con `kind:"spec"`.
+- `atlas spec list [--json]` → id, title, status, numero di workitem aperti collegati.
+- `atlas show <id>` esteso a specs/ (cerca in work/, cards/, specs/).
+
+**S9.3 Contesto.**
+- Brief generale: nuova sezione `## SPECS` tra RULES e RECENT, una riga per spec draft/active: `- [id] title (status, N open tasks)`. Priorità budget aggiornata: FOCUS > NOW > GROUND > READY > RULES > SPECS > RECENT > POINTERS; degradazione SPECS (dopo RECENT, prima di RULES): righe ridotte a `- [id] title`.
+- `atlas context <task-id>`: se il task ha `spec:`, dopo il corpo del task una sezione `## SPEC [id] title` con il body integrale della spec. Oltre budget, il body della spec degrada per primo: troncato con riga finale `… (full spec: atlas show <id>)`.
+- `atlas state`: sezione specs completa.
+
+**S9.4 Doctor.** Nuovi check: `spec:` di un workitem → spec inesistente (ERROR) o superseded (WARNING); `superseded_by` orfano tra spec (ERROR); spec draft più vecchie di 30 giorni (WARNING); frontmatter malformato in specs/ (ERROR); duplicati id estesi a specs/.
+
+**S9.5 Bootstrap (S3).** Aggiungere UNA riga al blocco (init idempotente la propaga ai repo al re-run):
+`- Working from a spec? Link tasks with \`atlas task add --spec <id>\`; \`atlas context <task-id>\` will include it.`
+
+**S9.6 Seed (S4).** Aggiungere al brief una sezione SPECS: creare spec solo per capability con intento genuinamente vivente (cap ~5 al seed); referenziare documenti di spec esistenti via evidence, mai copiarli.
+
+**S9.7 Test obbligatori** (S7 vale integralmente): roundtrip save/load spec; lifecycle draft→active→superseded; validazione `task add --spec` (inesistente/superseded); golden aggiornati per sezione SPECS nel brief generale; golden target-mode con spec inclusa e con degradazione budget del body; doctor per ognuno dei nuovi check; policy warn/strict sui comandi spec; collisione id cross-directory (work/cards/specs); `spec update --body -` da stdin; README aggiornato.
+
+**S9.8 Spec ↔ decisioni (ADR) — vincolo di tracciabilità (aggiunto 2026-08-27).**
+Una spec deve seguire una decisione. Modello:
+- Frontmatter spec: nuovo campo `decisions: []` — ogni voce è o l'id di una card ATLAS di tipo decision, o un path nel repo a un ADR esistente (es. `docs/adr/0034-enrichment-stage.md`).
+- `spec add --decision <id-o-path>` (CSV/ripetibile) e `spec update --decision ...` (sostituisce la lista).
+- **`spec activate` richiede almeno una decisione**: exit 2 `{"error":"spec_without_decision"}` altrimenti. Le draft possono nascere senza (si abbozza prima, si àncora per attivare).
+- Validazione a add/update/activate: id card → deve esistere ed essere `type: decision` (`{"error":"decision_not_found","id":"..."}`); a activate una decision superseded → exit 2 `{"error":"decision_superseded","id":"...","superseded_by":"..."}`; path → deve esistere su disco (`{"error":"decision_path_not_found","path":"..."}`).
+- Doctor: spec active con decisions vuoto (ERROR — invariante rotto da edit manuale); riferimento a card inesistente (ERROR); riferimento a decision superseded (WARNING: "spec may need revision"); path inesistente (ERROR).
+- Contesto target mode: sotto l'header `## SPEC [id] title`, una riga `Decisions: k9m2, docs/adr/0034-enrichment-stage.md` (non degradabile: è 1 riga).
+- `spec list`: mostra le decisioni collegate.
+- Seed brief e README aggiornati: creare prima la decision card, poi la spec che la referenzia.

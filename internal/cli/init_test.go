@@ -23,6 +23,7 @@ func TestInit_CreatesExpectedLayout(t *testing.T) {
 		filepath.Join(dir, ".atlas", "config.toml"),
 		filepath.Join(dir, ".atlas", "work"),
 		filepath.Join(dir, ".atlas", "cards"),
+		filepath.Join(dir, ".atlas", "specs"),
 		filepath.Join(dir, ".gitattributes"),
 		filepath.Join(dir, "AGENTS.md"),
 	} {
@@ -50,6 +51,23 @@ func TestInit_CreatesExpectedLayout(t *testing.T) {
 	}
 	if strings.TrimSpace(string(ga)) != gitAttributesLine {
 		t.Errorf(".gitattributes = %q, want exactly %q", string(ga), gitAttributesLine)
+	}
+}
+
+func TestInit_BootstrapBlockMentionsSpecs(t *testing.T) {
+	dir := testutil.SetupRepo(t)
+	chdir(t, dir)
+
+	if _, stderr, code := ExecuteCapture([]string{"init"}); code != 0 {
+		t.Fatalf("init failed: %s", stderr)
+	}
+
+	agents, err := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(agents), "atlas task add --spec <id>") {
+		t.Errorf("expected bootstrap block to mention `atlas task add --spec <id>`, got:\n%s", agents)
 	}
 }
 

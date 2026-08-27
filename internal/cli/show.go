@@ -29,7 +29,7 @@ func newShowCmd() *cobra.Command {
 			path, kind, err := findLedgerFile(root, id)
 			if err != nil {
 				return fail(cmd, 2, useJSON,
-					fmt.Sprintf("atlas: no such workitem or card: %s", id),
+					fmt.Sprintf("atlas: no such workitem, card or spec: %s", id),
 					map[string]any{"error": "not_found", "id": id})
 			}
 
@@ -61,6 +61,7 @@ func newShowCmd() *cobra.Command {
 					"evidence":        w.Evidence,
 					"summary":         w.Summary,
 					"reason":          w.Reason,
+					"spec":            w.Spec,
 					"body":            w.Body,
 				}
 			case "card":
@@ -80,6 +81,22 @@ func newShowCmd() *cobra.Command {
 					"evidence":      c.Evidence,
 					"body":          c.Body,
 				}
+			case "spec":
+				s, err := ledger.LoadSpec(root, id)
+				if err != nil {
+					return failIO(cmd, useJSON, err)
+				}
+				doc = map[string]any{
+					"kind":          "spec",
+					"id":            s.ID,
+					"title":         s.Title,
+					"status":        s.Status,
+					"superseded_by": s.SupersededBy,
+					"created":       s.Created,
+					"evidence":      s.Evidence,
+					"decisions":     s.Decisions,
+					"body":          s.Body,
+				}
 			}
 
 			data, err := json.MarshalIndent(doc, "", "  ")
@@ -94,8 +111,8 @@ func newShowCmd() *cobra.Command {
 	return cmd
 }
 
-// findLedgerFile locates the file for id under .atlas/work or .atlas/cards
-// (work searched first) and reports which kind it is.
+// findLedgerFile locates the file for id under .atlas/work, .atlas/cards
+// or .atlas/specs (searched in that order) and reports which kind it is.
 func findLedgerFile(root, id string) (path string, kind string, err error) {
 	for _, sub := range []struct {
 		dir  string
@@ -103,6 +120,7 @@ func findLedgerFile(root, id string) (path string, kind string, err error) {
 	}{
 		{"work", "task"},
 		{"cards", "card"},
+		{"specs", "spec"},
 	} {
 		dir := filepath.Join(root, ".atlas", sub.dir)
 		entries, readErr := os.ReadDir(dir)

@@ -129,6 +129,31 @@ func TestExistingIDs_UnionOfWorkCardsAndLog(t *testing.T) {
 	require.Len(t, ids, 3)
 }
 
+func TestExistingIDs_IncludesSpecFiles(t *testing.T) {
+	root := setupLedgerRoot(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(root, ".atlas", "specs"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".atlas", "specs", "3fa9-a-spec.md"), []byte("x"), 0o644))
+
+	ids, err := ExistingIDs(root)
+	require.NoError(t, err)
+	require.Contains(t, ids, "3fa9")
+	require.Len(t, ids, 1)
+}
+
+func TestGenerateID_RegeneratesOnCollisionAcrossWorkCardsAndSpecs(t *testing.T) {
+	root := setupLedgerRoot(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(root, ".atlas", "specs"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".atlas", "work", "a1b2-task.md"), []byte("x"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".atlas", "cards", "c3d4-card.md"), []byte("x"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".atlas", "specs", "e5f6-spec.md"), []byte("x"), 0o644))
+
+	reader := newFixedReader("a1b2", "c3d4", "e5f6", "1234")
+
+	id, err := GenerateID(root, reader)
+	require.NoError(t, err)
+	require.Equal(t, "1234", id)
+}
+
 func TestExistingIDs_ExtractsIDFromFirstHyphenOnly(t *testing.T) {
 	root := setupLedgerRoot(t)
 	// Slug itself contains a hyphen; id must be everything before the FIRST

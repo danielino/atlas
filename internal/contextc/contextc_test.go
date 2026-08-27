@@ -32,6 +32,11 @@ func TestRender_NoGitFixture_Golden(t *testing.T) {
 	compareGolden(t, "no-git.golden", got)
 }
 
+func TestRender_SpecsFixture_Golden(t *testing.T) {
+	got := Render(specsState(), defaultCfg(), fixedNow())
+	compareGolden(t, "general-with-specs.golden", got)
+}
+
 func TestRender_EmptyState_OnlyHeaderAndPointers(t *testing.T) {
 	got := Render(state.State{}, defaultCfg(), fixedNow())
 	require.Equal(t, "# ATLAS CONTEXT (2026-08-27)\n"+
@@ -39,8 +44,8 @@ func TestRender_EmptyState_OnlyHeaderAndPointers(t *testing.T) {
 }
 
 func TestRender_SectionOrder(t *testing.T) {
-	got := Render(fullState(), defaultCfg(), fixedNow())
-	order := []string{"## FOCUS", "## NOW", "## READY", "## RULES", "## RECENT", "## GROUND", "## POINTERS"}
+	got := Render(specsState(), defaultCfg(), fixedNow())
+	order := []string{"## FOCUS", "## NOW", "## READY", "## RULES", "## SPECS", "## RECENT", "## GROUND", "## POINTERS"}
 	last := -1
 	for _, marker := range order {
 		idx := strings.Index(got, marker)
@@ -104,6 +109,30 @@ func TestRender_DegradesRecentToRemoved(t *testing.T) {
 	require.Equal(t, stepRemoved, got)
 	require.NotContains(t, got, "## RECENT")
 	require.Contains(t, got, "## RULES")
+}
+
+func TestRender_DegradesSpecsToReducedLines(t *testing.T) {
+	s := overBudgetSpecsState()
+	dg := fullDegrade(len(s.Ready))
+	dg.recentLines = 0
+	full := renderText(s, fixedNow()(), dg)
+	require.Contains(t, full, "open tasks")
+
+	dgReduced := dg
+	dgReduced.specsReduced = true
+	stepReduced := renderText(s, fixedNow()(), dgReduced)
+	require.NotContains(t, stepReduced, "open tasks")
+	require.Contains(t, stepReduced, "## SPECS")
+
+	cfg := defaultCfg()
+	cfg.Context.BudgetTokens = EstimateTokens(stepReduced)
+
+	got := Render(s, cfg, fixedNow())
+	require.Equal(t, stepReduced, got)
+	require.NotContains(t, got, "open tasks")
+	require.Contains(t, got, "## RULES")
+	require.Contains(t, got, "(decision)") // RULES not yet truncated at this step
+	compareGolden(t, "budget-specs-reduced.golden", got)
 }
 
 func TestRender_DegradesRulesToTruncatedHooks(t *testing.T) {
@@ -283,13 +312,13 @@ func TestRenderTarget_Golden(t *testing.T) {
 		Focus:  "Ship F3.",
 		Ground: state.Ground{Branch: "feature/retry", Head: "9f8e7d6", Dirty: false},
 	}
-	got := RenderTarget(s, targetWorkitem(), targetCardPool(), defaultCfg(), fixedNow())
+	got := RenderTarget(s, targetWorkitem(), targetCardPool(), nil, defaultCfg(), fixedNow())
 	compareGolden(t, "target.golden", got)
 }
 
 func TestRenderTarget_IncludesFullBody(t *testing.T) {
 	s := state.State{Focus: "Ship F3."}
-	got := RenderTarget(s, targetWorkitem(), targetCardPool(), defaultCfg(), fixedNow())
+	got := RenderTarget(s, targetWorkitem(), targetCardPool(), nil, defaultCfg(), fixedNow())
 	require.Contains(t, got, "## TASK")
 	require.Contains(t, got, "Investigate retry backoff and reconcile loop.")
 	require.Contains(t, got, "id: a1b2")
@@ -300,12 +329,12 @@ func TestRenderTarget_IncludesFullBody(t *testing.T) {
 
 func TestRenderTarget_DegradesRulesUnderBudget(t *testing.T) {
 	s := state.State{Focus: "Ship F3."}
-	full := RenderTarget(s, targetWorkitem(), targetCardPool(), defaultCfg(), fixedNow())
+	full := RenderTarget(s, targetWorkitem(), targetCardPool(), nil, defaultCfg(), fixedNow())
 
 	cfg := defaultCfg()
 	cfg.Context.BudgetTokens = EstimateTokens(full) - 1
 
-	got := RenderTarget(s, targetWorkitem(), targetCardPool(), cfg, fixedNow())
+	got := RenderTarget(s, targetWorkitem(), targetCardPool(), nil, cfg, fixedNow())
 	require.Contains(t, got, "## TASK")
 	require.LessOrEqual(t, EstimateTokens(got), EstimateTokens(full))
 }
@@ -315,10 +344,90 @@ func TestRenderTarget_ExtremeLowBudget_KeepsFocusAndTask(t *testing.T) {
 	cfg := defaultCfg()
 	cfg.Context.BudgetTokens = 1
 
-	got := RenderTarget(s, targetWorkitem(), targetCardPool(), cfg, fixedNow())
+	got := RenderTarget(s, targetWorkitem(), targetCardPool(), nil, cfg, fixedNow())
 	require.Contains(t, got, "## FOCUS")
 	require.Contains(t, got, "## TASK")
 	require.NotContains(t, got, "## RULES")
+}
+
+// --- RenderTarget SPEC section (S9.3) ---
+
+func targetSpec() ledger.Spec {
+	return ledger.Spec{
+		ID:        "3fa9",
+		Title:     "Workload execution retry semantics",
+		Status:    "active",
+		Decisions: []string{"k9m2", "docs/adr/0034-enrichment-stage.md"},
+		Body: "Retries are bounded exponential backoff, capped at 5 attempts.\n" +
+			"A retry consumes the same claim; it never re-acquires it.\n" +
+			"Failures after the cap transition the workitem to blocked, never done.\n",
+	}
+}
+
+func targetWorkitemWithSpec() ledger.Workitem {
+	w := targetWorkitem()
+	w.Spec = "3fa9"
+	return w
+}
+
+func TestRenderTarget_WithSpec_Golden(t *testing.T) {
+	s := state.State{
+		Focus:  "Ship F3.",
+		Ground: state.Ground{Branch: "feature/retry", Head: "9f8e7d6", Dirty: false},
+	}
+	spec := targetSpec()
+	got := RenderTarget(s, targetWorkitemWithSpec(), targetCardPool(), &spec, defaultCfg(), fixedNow())
+	compareGolden(t, "target-with-spec.golden", got)
+}
+
+func TestRenderTarget_WithSpec_IncludesFullBody(t *testing.T) {
+	s := state.State{Focus: "Ship F3."}
+	spec := targetSpec()
+	got := RenderTarget(s, targetWorkitemWithSpec(), targetCardPool(), &spec, defaultCfg(), fixedNow())
+	require.Contains(t, got, "## SPEC [3fa9] Workload execution retry semantics")
+	require.Contains(t, got, "Decisions: k9m2, docs/adr/0034-enrichment-stage.md")
+	require.Contains(t, got, "bounded exponential backoff")
+	require.NotContains(t, got, "full spec: atlas show")
+}
+
+func TestRenderTarget_WithSpec_DecisionsLineNeverDegrades(t *testing.T) {
+	s := state.State{Focus: "Ship F3."}
+	spec := targetSpec()
+	cfg := defaultCfg()
+	cfg.Context.BudgetTokens = 1
+
+	got := RenderTarget(s, targetWorkitemWithSpec(), targetCardPool(), &spec, cfg, fixedNow())
+	require.Contains(t, got, "Decisions: k9m2, docs/adr/0034-enrichment-stage.md")
+}
+
+func TestRenderTarget_WithSpec_OverBudget_Golden(t *testing.T) {
+	s := state.State{
+		Focus:  "Ship F3.",
+		Ground: state.Ground{Branch: "feature/retry", Head: "9f8e7d6", Dirty: false},
+	}
+	spec := targetSpec()
+	full := RenderTarget(s, targetWorkitemWithSpec(), targetCardPool(), &spec, defaultCfg(), fixedNow())
+
+	cfg := defaultCfg()
+	cfg.Context.BudgetTokens = EstimateTokens(full) - 5
+
+	got := RenderTarget(s, targetWorkitemWithSpec(), targetCardPool(), &spec, cfg, fixedNow())
+	require.Contains(t, got, "## SPEC [3fa9]")
+	require.Contains(t, got, "… (full spec: atlas show 3fa9)")
+	require.Contains(t, got, "(decision)") // spec degrades first: RULES not yet truncated
+	compareGolden(t, "target-with-spec-over-budget.golden", got)
+}
+
+func TestRenderTarget_WithSpec_ExtremeLowBudget_SpecReducedToPointerLine(t *testing.T) {
+	s := state.State{Focus: "Ship F3."}
+	spec := targetSpec()
+	cfg := defaultCfg()
+	cfg.Context.BudgetTokens = 1
+
+	got := RenderTarget(s, targetWorkitemWithSpec(), targetCardPool(), &spec, cfg, fixedNow())
+	require.Contains(t, got, "## FOCUS")
+	require.Contains(t, got, "## TASK")
+	require.Contains(t, got, "… (full spec: atlas show 3fa9)")
 }
 
 func TestNowLine_BlockedVariants(t *testing.T) {
@@ -358,7 +467,7 @@ func TestRenderJSON_NilNow_DefaultsToTimeNow(t *testing.T) {
 }
 
 func TestRenderTarget_NilNow_DefaultsToTimeNow(t *testing.T) {
-	got := RenderTarget(state.State{}, targetWorkitem(), nil, defaultCfg(), nil)
+	got := RenderTarget(state.State{}, targetWorkitem(), nil, nil, defaultCfg(), nil)
 	require.Contains(t, got, "## TASK")
 }
 

@@ -39,6 +39,7 @@ func effectiveNow(now func() time.Time) time.Time {
 // walked for the current render attempt.
 type degradeState struct {
 	recentLines    int  // -1 = full, 0 = section removed, N>0 = first N lines
+	specsReduced   bool // SPECS lines cut to "- [id] title"
 	rulesTruncated bool // hooks cut to 60 chars, type suffix dropped
 	readyShown     int  // -1 = show all, otherwise how many READY lines to show
 }
@@ -72,14 +73,21 @@ func Render(s state.State, cfg ledger.Config, now func() time.Time) string {
 		return text
 	}
 
-	// Step 3: RULES truncated to "[id] first 60 chars of hook".
+	// Step 3: SPECS reduced to "- [id] title".
+	dg.specsReduced = true
+	text = renderText(s, t, dg)
+	if EstimateTokens(text) <= budget {
+		return text
+	}
+
+	// Step 4: RULES truncated to "[id] first 60 chars of hook".
 	dg.rulesTruncated = true
 	text = renderText(s, t, dg)
 	if EstimateTokens(text) <= budget {
 		return text
 	}
 
-	// Step 4: READY truncated, one item removed at a time. FOCUS and NOW
+	// Step 5: READY truncated, one item removed at a time. FOCUS and NOW
 	// are never removed, so once READY is exhausted we accept staying
 	// over budget rather than touching them.
 	for shown := len(s.Ready) - 1; shown >= 0; shown-- {
@@ -111,6 +119,7 @@ func renderText(s state.State, t time.Time, dg degradeState) string {
 	writeSection(&b, renderNow(s.Now))
 	writeSection(&b, renderReady(s.Ready, dg.readyShown))
 	writeSection(&b, renderRules(s.ActiveCards, dg.rulesTruncated))
+	writeSection(&b, renderSpecs(s.Specs, dg.specsReduced))
 	writeSection(&b, renderRecent(s.RecentClosed, s.RecentCommits, dg.recentLines))
 	writeSection(&b, renderGround(s.Ground))
 
@@ -226,6 +235,25 @@ func truncateHook(hook string) string {
 	return string(r[:60])
 }
 
+// renderSpecs renders the SPECS section (S9.3): one line per draft/active
+// spec, "- [id] title (status, N open tasks)". When reduced (part of the
+// S5.3/S9.3 degradation ladder), lines are cut to "- [id] title".
+func renderSpecs(specs []state.SpecSummary, reduced bool) string {
+	if len(specs) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("## SPECS\n")
+	for _, sp := range specs {
+		if reduced {
+			b.WriteString("- [" + sp.ID + "] " + sp.Title + "\n")
+		} else {
+			b.WriteString(fmt.Sprintf("- [%s] %s (%s, %d open tasks)\n", sp.ID, sp.Title, sp.Status, sp.OpenTasks))
+		}
+	}
+	return b.String()
+}
+
 func renderRecent(entries []ledger.LogEntry, commits []string, lines int) string {
 	if lines == 0 {
 		return ""
@@ -332,6 +360,13 @@ type jsonBudget struct {
 	Estimated int `json:"estimated"`
 }
 
+type jsonSpec struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Status    string `json:"status"`
+	OpenTasks int    `json:"open_tasks"`
+}
+
 type jsonContext struct {
 	Generated string            `json:"generated"`
 	Stale     bool              `json:"stale"`
@@ -339,6 +374,7 @@ type jsonContext struct {
 	Now       []jsonWorkitem    `json:"now"`
 	Ready     []jsonWorkitem    `json:"ready"`
 	Rules     []jsonRule        `json:"rules"`
+	Specs     []jsonSpec        `json:"specs"`
 	Recent    []ledger.LogEntry `json:"recent"`
 	Ground    jsonGround        `json:"ground"`
 	Budget    jsonBudget        `json:"budget"`
@@ -367,6 +403,10 @@ func RenderJSON(s state.State, cfg ledger.Config, now func() time.Time) ([]byte,
 	for _, e := range s.Ground.Elsewhere {
 		elsewhere = append(elsewhere, jsonElsewhere{ID: e.ID, Branch: e.Branch})
 	}
+	specs := make([]jsonSpec, 0, len(s.Specs))
+	for _, sp := range s.Specs {
+		specs = append(specs, jsonSpec{ID: sp.ID, Title: sp.Title, Status: sp.Status, OpenTasks: sp.OpenTasks})
+	}
 	recent := s.RecentClosed
 	if recent == nil {
 		recent = []ledger.LogEntry{}
@@ -379,6 +419,7 @@ func RenderJSON(s state.State, cfg ledger.Config, now func() time.Time) ([]byte,
 		Now:       nowItems,
 		Ready:     readyItems,
 		Rules:     rules,
+		Specs:     specs,
 		Recent:    recent,
 		Ground: jsonGround{
 			Branch:    s.Ground.Branch,
@@ -397,31 +438,64 @@ func RenderJSON(s state.State, cfg ledger.Config, now func() time.Time) ([]byte,
 
 // --- Target mode (S5.5) ---
 
-// RenderTarget renders FOCUS + the full workitem (frontmatter+body) +
-// related cards + GROUND + POINTERS, budgeted like Render. cards is the
-// candidate pool (typically all active cards); relatedCards filters it
-// down to the ones that mention w or share evidence paths with it.
-func RenderTarget(s state.State, w ledger.Workitem, cards []ledger.Card, cfg ledger.Config, now func() time.Time) string {
+// RenderTarget renders FOCUS + the full workitem (frontmatter+body) + (if
+// the workitem has a spec:) the full spec body + related cards + GROUND +
+// POINTERS, budgeted like Render. cards is the candidate pool (typically
+// all active cards); relatedCards filters it down to the ones that mention
+// w or share evidence paths with it. spec is the workitem's linked spec in
+// full (nil if it has none), independent of state.State.Specs so that a
+// spec's full text is available here even though the general brief only
+// ever carries a one-line summary of it.
+func RenderTarget(s state.State, w ledger.Workitem, cards []ledger.Card, spec *ledger.Spec, cfg ledger.Config, now func() time.Time) string {
 	t := effectiveNow(now)
 	budget := cfg.Context.BudgetTokens
 	related := relatedCards(w, cards)
 
-	text := renderTargetText(s, w, related, t, false)
+	text := renderTargetText(s, w, related, spec, -1, t, false)
 	if budget <= 0 || EstimateTokens(text) <= budget {
 		return text
 	}
 
-	// Degrade: cards -> truncated hooks, then dropped entirely. FOCUS and
+	// Step 1: the spec body degrades FIRST (S9.3), truncated in shrinking
+	// steps down to nothing (just the "full spec" pointer line) before any
+	// other section is touched.
+	if spec != nil {
+		bodyLen := len([]rune(spec.Body))
+		const step = 40
+		max := bodyLen - step
+		if max < 0 {
+			max = 0
+		}
+		for {
+			text = renderTargetText(s, w, related, spec, max, t, false)
+			if EstimateTokens(text) <= budget {
+				return text
+			}
+			if max == 0 {
+				break
+			}
+			max -= step
+			if max < 0 {
+				max = 0
+			}
+		}
+	}
+
+	// Step 2: cards -> truncated hooks, then dropped entirely. FOCUS and
 	// the target workitem itself are never removed.
-	text = renderTargetText(s, w, related, t, true)
+	text = renderTargetText(s, w, related, spec, 0, t, true)
 	if EstimateTokens(text) <= budget {
 		return text
 	}
 
-	return renderTargetText(s, w, nil, t, false)
+	return renderTargetText(s, w, nil, spec, 0, t, false)
 }
 
-func renderTargetText(s state.State, w ledger.Workitem, cards []ledger.Card, t time.Time, rulesTruncated bool) string {
+// renderTargetText renders one candidate text for RenderTarget's budget
+// ladder. specMaxRunes controls the SPEC section's body truncation: -1
+// means the full body, otherwise the body is cut to that many runes
+// (S9.3's "spec body degrades first"). Ignored when spec is nil.
+func renderTargetText(s state.State, w ledger.Workitem, cards []ledger.Card, spec *ledger.Spec, specMaxRunes int, t time.Time, rulesTruncated bool) string {
 	var b strings.Builder
 	b.WriteString(header(t, s.Stale))
 	b.WriteString("\n")
@@ -431,6 +505,10 @@ func renderTargetText(s state.State, w ledger.Workitem, cards []ledger.Card, t t
 	b.WriteString("## TASK\n")
 	b.WriteString(renderWorkitemFull(w))
 
+	if spec != nil {
+		b.WriteString(renderSpecSection(*spec, specMaxRunes))
+	}
+
 	writeSection(&b, renderRules(cards, rulesTruncated))
 	writeSection(&b, renderGround(s.Ground))
 
@@ -438,6 +516,34 @@ func renderTargetText(s state.State, w ledger.Workitem, cards []ledger.Card, t t
 	b.WriteString(pointersLine)
 	b.WriteString("\n")
 
+	return b.String()
+}
+
+// renderSpecSection renders the target mode's "## SPEC [id] title" section
+// (S9.3) with the spec's full body, or (maxRunes >= 0) the body truncated
+// to maxRunes runes with a final "… (full spec: atlas show <id>)" line.
+// Right under the header, a single "Decisions: ..." line (S9.8) lists the
+// spec's linked decisions; it is never degraded, since it is one line.
+func renderSpecSection(spec ledger.Spec, maxRunes int) string {
+	var b strings.Builder
+	b.WriteString("## SPEC [" + spec.ID + "] " + spec.Title + "\n")
+	if len(spec.Decisions) > 0 {
+		b.WriteString("Decisions: " + strings.Join(spec.Decisions, ", ") + "\n")
+	}
+
+	body := strings.TrimRight(spec.Body, "\n")
+	runes := []rune(body)
+	if maxRunes < 0 || len(runes) <= maxRunes {
+		b.WriteString(body)
+		b.WriteString("\n")
+		return b.String()
+	}
+
+	if maxRunes > 0 {
+		b.WriteString(string(runes[:maxRunes]))
+		b.WriteString("\n")
+	}
+	b.WriteString("… (full spec: atlas show " + spec.ID + ")\n")
 	return b.String()
 }
 

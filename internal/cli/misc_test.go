@@ -25,6 +25,12 @@ func TestSeed_PrintsTextAndJSON(t *testing.T) {
 	if !strings.Contains(out, `"brief"`) {
 		t.Errorf("expected {\"brief\":...}, got: %s", out)
 	}
+	if !strings.Contains(stdout, "atlas spec add") {
+		t.Errorf("expected a `spec add` example in the brief, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "--decision") {
+		t.Errorf("expected the brief to mention linking a spec to a decision, got: %s", stdout)
+	}
 }
 
 func TestState_TextAndJSON(t *testing.T) {

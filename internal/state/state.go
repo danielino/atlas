@@ -47,12 +47,26 @@ type Ground struct {
 	Elsewhere  []ElsewhereClaim
 }
 
+// SpecSummary is a draft or active spec (PLAN.md S9) plus its open-task
+// count, exposed in State for the context brief's SPECS section and for
+// `atlas state`. Superseded specs are never included: they are excluded
+// from the ledger's "current" view just like superseded cards.
+type SpecSummary struct {
+	ledger.Spec
+	// OpenTasks is the count of workitems currently under .atlas/work/
+	// whose `spec:` field names this spec. Every file under work/ is, by
+	// construction, still open (`atlas task done` removes the file), so
+	// this is a plain count with no status filter.
+	OpenTasks int
+}
+
 // State is the full derived view of the project assembled by Build.
 type State struct {
 	Focus        string
 	Now          []ledger.Workitem
 	Ready        []ledger.Workitem
 	ActiveCards  []ledger.Card
+	Specs        []SpecSummary
 	RecentClosed []ledger.LogEntry
 	// RecentCommits holds up to gitx' default window of oneline commit
 	// summaries, most recent first, for the RECENT section's "- git: ..."
@@ -230,6 +244,11 @@ func Build(root string, cfg ledger.Config, opts Options) (State, error) {
 	}
 	sort.Slice(activeCards, func(i, j int) bool { return activeCards[i].ID < activeCards[j].ID })
 
+	specs, err := buildSpecSummaries(root, workitems)
+	if err != nil {
+		return State{}, err
+	}
+
 	logEntries, err := ledger.ReadLog(root)
 	if err != nil {
 		return State{}, err
@@ -253,11 +272,39 @@ func Build(root string, cfg ledger.Config, opts Options) (State, error) {
 		Now:           Now(workitems),
 		Ready:         Ready(workitems, closedIDs),
 		ActiveCards:   activeCards,
+		Specs:         specs,
 		RecentClosed:  recent,
 		RecentCommits: recentCommits,
 		Ground:        ground,
 		Stale:         stale,
 	}, nil
+}
+
+// buildSpecSummaries returns the draft/active specs (superseded excluded),
+// sorted by id, each annotated with its open-task count derived from
+// workitems.
+func buildSpecSummaries(root string, workitems []ledger.Workitem) ([]SpecSummary, error) {
+	all, err := ledger.ListSpecs(root)
+	if err != nil {
+		return nil, err
+	}
+
+	openTasks := make(map[string]int)
+	for _, w := range workitems {
+		if w.Spec != "" {
+			openTasks[w.Spec]++
+		}
+	}
+
+	var out []SpecSummary
+	for _, s := range all {
+		if s.Status == "superseded" {
+			continue
+		}
+		out = append(out, SpecSummary{Spec: s, OpenTasks: openTasks[s.ID]})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
 }
 
 // recentClosed returns the log entries closed within recentDays of now,

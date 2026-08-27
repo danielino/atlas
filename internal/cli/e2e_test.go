@@ -142,3 +142,71 @@ func TestE2E_FullLifecycleThenDoctorCatchesCorruption(t *testing.T) {
 		t.Errorf("expected both orphan_ref and malformed_frontmatter codes in json, got:\n%s", jsonOut)
 	}
 }
+
+// TestE2E_SpecWorkflow exercises S9 end to end in a fresh repo: a
+// decision card, a spec that follows it, a task linked to that spec, and
+// `atlas context <task>` showing the spec — finishing with a clean
+// `atlas doctor` (S9.7).
+func TestE2E_SpecWorkflow(t *testing.T) {
+	initRepo(t)
+
+	// A spec must follow a decision (S9.8): create the decision first.
+	stdout, stderr, code := ExecuteCapture([]string{"card", "add", "--type", "decision", "Bounded retry model", "--hook", "Retries are capped, never infinite"})
+	if code != 0 {
+		t.Fatalf("card add failed (%d): %s", code, stderr)
+	}
+	decisionID := strings.TrimSpace(stdout)
+
+	// Add a spec → task add --spec → context <task> shows the spec.
+	stdout, stderr, code = ExecuteCapture([]string{
+		"spec", "add", "Workload execution retry semantics",
+		"--body", "Retries are bounded exponential backoff, capped at 5 attempts.",
+		"--decision", decisionID,
+	})
+	if code != 0 {
+		t.Fatalf("spec add failed (%d): %s", code, stderr)
+	}
+	specID := strings.TrimSpace(stdout)
+
+	if _, stderr, code := ExecuteCapture([]string{"spec", "activate", specID}); code != 0 {
+		t.Fatalf("spec activate failed (%d): %s", code, stderr)
+	}
+
+	stdout, stderr, code = ExecuteCapture([]string{"task", "add", "Implement the retry loop", "--spec", specID})
+	if code != 0 {
+		t.Fatalf("task add --spec failed (%d): %s", code, stderr)
+	}
+	taskID := strings.TrimSpace(stdout)
+
+	out, stderr, code := ExecuteCapture([]string{"context", taskID})
+	if code != 0 {
+		t.Fatalf("context failed (%d): %s", code, stderr)
+	}
+	if !strings.Contains(out, "## SPEC ["+specID+"]") {
+		t.Fatalf("expected SPEC section in target context, got:\n%s", out)
+	}
+	if !strings.Contains(out, "bounded exponential backoff") {
+		t.Fatalf("expected the spec's full body in target context, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Decisions: "+decisionID) {
+		t.Fatalf("expected the spec's Decisions line in target context, got:\n%s", out)
+	}
+
+	// The general brief also carries a SPECS line for this spec.
+	generalOut, stderr, code := ExecuteCapture([]string{"context"})
+	if code != 0 {
+		t.Fatalf("context failed (%d): %s", code, stderr)
+	}
+	if !strings.Contains(generalOut, "## SPECS") || !strings.Contains(generalOut, specID) {
+		t.Fatalf("expected a SPECS section mentioning %s, got:\n%s", specID, generalOut)
+	}
+
+	// doctor: clean ledger, exit 0, no errors.
+	out, stderr, code = ExecuteCapture([]string{"doctor"})
+	if code != 0 {
+		t.Fatalf("expected doctor exit 0 on a clean ledger, got %d\nstdout:\n%s\nstderr:\n%s", code, out, stderr)
+	}
+	if strings.Contains(out, "## ERRORS") {
+		t.Fatalf("expected no errors on a clean ledger, got:\n%s", out)
+	}
+}

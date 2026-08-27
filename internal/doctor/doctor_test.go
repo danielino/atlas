@@ -289,6 +289,191 @@ func TestRun_NoGitRepo_ClaimsCheckSkipped(t *testing.T) {
 	require.Empty(t, report.Errors)
 }
 
+// --- S9.4/S9.8 spec checks ---
+
+func TestRun_WorkitemSpecNonexistent_IsError(t *testing.T) {
+	repo := setup(t)
+	require.NoError(t, ledger.SaveWorkitem(repo, ledger.Workitem{
+		ID: "a1b2", Title: "t", Status: "todo", Created: "2026-08-27", Spec: "ffff",
+	}))
+
+	report, err := Run(repo, ledger.DefaultConfig(), Options{})
+	require.NoError(t, err)
+	require.True(t, hasIssue(report.Errors, "spec_not_found"))
+}
+
+func TestRun_WorkitemSpecSuperseded_IsWarning(t *testing.T) {
+	repo := setup(t)
+	require.NoError(t, ledger.SaveSpec(repo, ledger.Spec{
+		ID: "3fa9", Title: "old spec", Status: "superseded", SupersededBy: "77aa", Created: "2026-08-27",
+	}))
+	require.NoError(t, ledger.SaveSpec(repo, ledger.Spec{
+		ID: "77aa", Title: "new spec", Status: "active", Created: "2026-08-27", Decisions: []string{"k9m2"},
+	}))
+	require.NoError(t, ledger.SaveCard(repo, ledger.Card{
+		ID: "k9m2", Type: "decision", Title: "d", Status: "active", Hook: "h", Created: "2026-08-27",
+	}))
+	require.NoError(t, ledger.SaveWorkitem(repo, ledger.Workitem{
+		ID: "a1b2", Title: "t", Status: "todo", Created: "2026-08-27", Spec: "3fa9",
+	}))
+
+	report, err := Run(repo, ledger.DefaultConfig(), Options{})
+	require.NoError(t, err)
+	require.True(t, hasIssue(report.Warnings, "spec_superseded"))
+	require.False(t, report.HasErrors())
+}
+
+func TestRun_SpecSupersededByOrphan_IsError(t *testing.T) {
+	repo := setup(t)
+	require.NoError(t, ledger.SaveSpec(repo, ledger.Spec{
+		ID: "3fa9", Title: "old spec", Status: "superseded", SupersededBy: "ffff", Created: "2026-08-27",
+	}))
+
+	report, err := Run(repo, ledger.DefaultConfig(), Options{})
+	require.NoError(t, err)
+	require.True(t, hasIssue(report.Errors, "orphan_ref"))
+}
+
+func TestRun_DraftSpecOlderThan30Days_IsWarning(t *testing.T) {
+	repo := setup(t)
+	require.NoError(t, ledger.SaveSpec(repo, ledger.Spec{
+		ID: "3fa9", Title: "old draft", Status: "draft", Created: "2026-01-01",
+	}))
+	now := time.Date(2026, 8, 27, 0, 0, 0, 0, time.UTC)
+
+	report, err := Run(repo, ledger.DefaultConfig(), Options{Now: func() time.Time { return now }})
+	require.NoError(t, err)
+	require.True(t, hasIssue(report.Warnings, "old_draft_spec"))
+	require.False(t, report.HasErrors())
+}
+
+func TestRun_DraftSpecYoungerThan30Days_NoWarning(t *testing.T) {
+	repo := setup(t)
+	require.NoError(t, ledger.SaveSpec(repo, ledger.Spec{
+		ID: "3fa9", Title: "fresh draft", Status: "draft", Created: "2026-08-20",
+	}))
+	now := time.Date(2026, 8, 27, 0, 0, 0, 0, time.UTC)
+
+	report, err := Run(repo, ledger.DefaultConfig(), Options{Now: func() time.Time { return now }})
+	require.NoError(t, err)
+	require.False(t, hasIssue(report.Warnings, "old_draft_spec"))
+}
+
+func TestRun_ActiveSpecOlderThan30Days_NoWarning(t *testing.T) {
+	repo := setup(t)
+	require.NoError(t, ledger.SaveSpec(repo, ledger.Spec{
+		ID: "3fa9", Title: "old active", Status: "active", Created: "2026-01-01", Decisions: []string{"k9m2"},
+	}))
+	require.NoError(t, ledger.SaveCard(repo, ledger.Card{
+		ID: "k9m2", Type: "decision", Title: "d", Status: "active", Hook: "h", Created: "2026-01-01",
+	}))
+	now := time.Date(2026, 8, 27, 0, 0, 0, 0, time.UTC)
+
+	report, err := Run(repo, ledger.DefaultConfig(), Options{Now: func() time.Time { return now }})
+	require.NoError(t, err)
+	require.False(t, hasIssue(report.Warnings, "old_draft_spec"))
+}
+
+func TestRun_MalformedSpecFrontmatter_IsError(t *testing.T) {
+	repo := setup(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".atlas", "specs"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, ".atlas", "specs", "cccc-bad.md"),
+		[]byte("---\nid: cccc\nno closing delimiter\n"), 0o644))
+
+	report, err := Run(repo, ledger.DefaultConfig(), Options{})
+	require.NoError(t, err)
+	require.True(t, hasIssue(report.Errors, "malformed_frontmatter"))
+}
+
+func TestRun_DuplicateIDAcrossWorkCardsAndSpecs_IsError(t *testing.T) {
+	repo := setup(t)
+	require.NoError(t, os.WriteFile(filepath.Join(repo, ".atlas", "work", "a1b2-one.md"),
+		[]byte("---\nid: a1b2\ntitle: one\nstatus: todo\ncreated: 2026-08-27\n---\nbody\n"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".atlas", "specs"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, ".atlas", "specs", "a1b2-two.md"),
+		[]byte("---\nid: a1b2\ntitle: two\nstatus: draft\ncreated: 2026-08-27\n---\nbody\n"), 0o644))
+
+	report, err := Run(repo, ledger.DefaultConfig(), Options{})
+	require.NoError(t, err)
+	require.True(t, hasIssue(report.Errors, "duplicate_id"))
+}
+
+func TestRun_ActiveSpecWithEmptyDecisions_IsError(t *testing.T) {
+	repo := setup(t)
+	require.NoError(t, ledger.SaveSpec(repo, ledger.Spec{
+		ID: "3fa9", Title: "active without decision", Status: "active", Created: "2026-08-27",
+	}))
+
+	report, err := Run(repo, ledger.DefaultConfig(), Options{})
+	require.NoError(t, err)
+	require.True(t, hasIssue(report.Errors, "spec_without_decision"))
+}
+
+func TestRun_DraftSpecWithEmptyDecisions_NoError(t *testing.T) {
+	repo := setup(t)
+	require.NoError(t, ledger.SaveSpec(repo, ledger.Spec{
+		ID: "3fa9", Title: "draft without decision", Status: "draft", Created: "2026-08-27",
+	}))
+
+	report, err := Run(repo, ledger.DefaultConfig(), Options{})
+	require.NoError(t, err)
+	require.False(t, hasIssue(report.Errors, "spec_without_decision"))
+}
+
+func TestRun_SpecDecisionReferencesNonexistentCard_IsError(t *testing.T) {
+	repo := setup(t)
+	require.NoError(t, ledger.SaveSpec(repo, ledger.Spec{
+		ID: "3fa9", Title: "spec", Status: "draft", Created: "2026-08-27", Decisions: []string{"ffff"},
+	}))
+
+	report, err := Run(repo, ledger.DefaultConfig(), Options{})
+	require.NoError(t, err)
+	require.True(t, hasIssue(report.Errors, "decision_not_found"))
+}
+
+func TestRun_SpecDecisionReferencesSupersededCard_IsWarning(t *testing.T) {
+	repo := setup(t)
+	require.NoError(t, ledger.SaveCard(repo, ledger.Card{
+		ID: "k9m2", Type: "decision", Title: "old", Status: "superseded", SupersededBy: "x1y2", Hook: "h", Created: "2026-08-27",
+	}))
+	require.NoError(t, ledger.SaveCard(repo, ledger.Card{
+		ID: "x1y2", Type: "decision", Title: "new", Status: "active", Hook: "h", Created: "2026-08-27",
+	}))
+	require.NoError(t, ledger.SaveSpec(repo, ledger.Spec{
+		ID: "3fa9", Title: "spec", Status: "active", Created: "2026-08-27", Decisions: []string{"k9m2"},
+	}))
+
+	report, err := Run(repo, ledger.DefaultConfig(), Options{})
+	require.NoError(t, err)
+	require.True(t, hasIssue(report.Warnings, "decision_superseded"))
+	require.False(t, report.HasErrors())
+}
+
+func TestRun_SpecDecisionReferencesNonexistentPath_IsError(t *testing.T) {
+	repo := setup(t)
+	require.NoError(t, ledger.SaveSpec(repo, ledger.Spec{
+		ID: "3fa9", Title: "spec", Status: "draft", Created: "2026-08-27", Decisions: []string{"docs/adr/0034-nope.md"},
+	}))
+
+	report, err := Run(repo, ledger.DefaultConfig(), Options{})
+	require.NoError(t, err)
+	require.True(t, hasIssue(report.Errors, "decision_path_not_found"))
+}
+
+func TestRun_SpecDecisionPathExists_NoError(t *testing.T) {
+	repo := setup(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, "docs", "adr"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "docs", "adr", "0034-x.md"), []byte("# ADR\n"), 0o644))
+	require.NoError(t, ledger.SaveSpec(repo, ledger.Spec{
+		ID: "3fa9", Title: "spec", Status: "active", Created: "2026-08-27", Decisions: []string{"docs/adr/0034-x.md"},
+	}))
+
+	report, err := Run(repo, ledger.DefaultConfig(), Options{})
+	require.NoError(t, err)
+	require.False(t, hasIssue(report.Errors, "decision_path_not_found"))
+	require.False(t, hasIssue(report.Errors, "spec_without_decision"))
+}
+
 func TestRun_JSONShape_NeverNilSlices(t *testing.T) {
 	repo := setup(t)
 	report, err := Run(repo, ledger.DefaultConfig(), Options{})

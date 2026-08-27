@@ -27,6 +27,17 @@ import (
 // as a staleness warning.
 const cardMaxAgeDays = 90
 
+// specDraftMaxAgeDays is the age (S9.4) beyond which a draft spec is
+// flagged as a staleness warning.
+const specDraftMaxAgeDays = 30
+
+// isDecisionID distinguishes a bare ATLAS id from a repo-relative ADR
+// path in a spec's decisions list (S9.8): ids never contain a path
+// separator or a file extension, while every ADR path in practice does.
+func isDecisionID(entry string) bool {
+	return !strings.ContainsAny(entry, "/.")
+}
+
 // Issue is one integrity problem or informational fix, identified by a
 // stable machine-readable Code plus a human-readable Message.
 type Issue struct {
@@ -80,8 +91,13 @@ func Run(root string, cfg ledger.Config, opts Options) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
+	specs, sIssues, err := scanSpecs(root)
+	if err != nil {
+		return Report{}, err
+	}
 	report.Errors = append(report.Errors, wIssues...)
 	report.Errors = append(report.Errors, cIssues...)
+	report.Errors = append(report.Errors, sIssues...)
 
 	logEntries, err := ledger.ReadLog(root)
 	if err != nil {
@@ -93,19 +109,35 @@ func Run(root string, cfg ledger.Config, opts Options) (Report, error) {
 		closedIDs[e.ID] = struct{}{}
 	}
 
-	activeIDs := make(map[string]struct{}, len(workitems)+len(cards))
+	activeIDs := make(map[string]struct{}, len(workitems)+len(cards)+len(specs))
 	for _, w := range workitems {
 		activeIDs[w.ID] = struct{}{}
 	}
 	for _, c := range cards {
 		activeIDs[c.ID] = struct{}{}
 	}
+	for _, s := range specs {
+		activeIDs[s.ID] = struct{}{}
+	}
 
-	report.Errors = append(report.Errors, duplicateIDIssues(workitems, cards)...)
-	report.Errors = append(report.Errors, orphanRefIssues(workitems, cards, activeIDs, closedIDs)...)
+	cardsByID := make(map[string]ledger.Card, len(cards))
+	for _, c := range cards {
+		cardsByID[c.ID] = c
+	}
+
+	report.Errors = append(report.Errors, duplicateIDIssues(workitems, cards, specs)...)
+	report.Errors = append(report.Errors, orphanRefIssues(workitems, cards, specs, activeIDs, closedIDs)...)
 	report.Errors = append(report.Errors, cycleIssues(workitems)...)
 	report.Errors = append(report.Errors, doneInWorkIssues(workitems)...)
 	report.Errors = append(report.Errors, missingSummaryIssues(logEntries)...)
+
+	specErrors, specWarnings := specRefIssues(workitems, specs)
+	report.Errors = append(report.Errors, specErrors...)
+	report.Warnings = append(report.Warnings, specWarnings...)
+
+	decisionErrors, decisionWarnings := decisionIssues(root, specs, cardsByID)
+	report.Errors = append(report.Errors, decisionErrors...)
+	report.Warnings = append(report.Warnings, decisionWarnings...)
 
 	stale, err := state.Stale(root)
 	if err != nil {
@@ -119,6 +151,7 @@ func Run(root string, cfg ledger.Config, opts Options) (Report, error) {
 	}
 
 	report.Warnings = append(report.Warnings, oldCardIssues(cards, opts.now())...)
+	report.Warnings = append(report.Warnings, oldDraftSpecIssues(specs, opts.now())...)
 
 	fixed, err := reconcileClaims(root, cfg, activeIDs, opts)
 	if err != nil {
@@ -207,6 +240,37 @@ func scanCards(root string) ([]ledger.Card, []Issue, error) {
 	return items, issues, nil
 }
 
+// scanSpecs is scanWorkitems'/scanCards' twin for .atlas/specs/.
+func scanSpecs(root string) ([]ledger.Spec, []Issue, error) {
+	dir := filepath.Join(root, ".atlas", "specs")
+	names, err := sortedFileNames(dir)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var items []ledger.Spec
+	var issues []Issue
+	for _, name := range names {
+		data, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			return nil, nil, err
+		}
+		fm, body, err := ledger.ParseFrontmatter(data)
+		if err != nil {
+			issues = append(issues, Issue{Code: "malformed_frontmatter", Message: "specs/" + name + ": " + err.Error()})
+			continue
+		}
+		var s ledger.Spec
+		if err := yaml.Unmarshal(fm, &s); err != nil {
+			issues = append(issues, Issue{Code: "malformed_frontmatter", Message: "specs/" + name + ": " + err.Error()})
+			continue
+		}
+		s.Body = string(body)
+		items = append(items, s)
+	}
+	return items, issues, nil
+}
+
 func sortedFileNames(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -227,8 +291,8 @@ func sortedFileNames(dir string) ([]string, error) {
 }
 
 // duplicateIDIssues flags any id that names more than one file across
-// work/ and cards/ combined.
-func duplicateIDIssues(workitems []ledger.Workitem, cards []ledger.Card) []Issue {
+// work/, cards/ and specs/ combined.
+func duplicateIDIssues(workitems []ledger.Workitem, cards []ledger.Card, specs []ledger.Spec) []Issue {
 	count := make(map[string]int)
 	for _, w := range workitems {
 		count[w.ID]++
@@ -236,13 +300,16 @@ func duplicateIDIssues(workitems []ledger.Workitem, cards []ledger.Card) []Issue
 	for _, c := range cards {
 		count[c.ID]++
 	}
+	for _, s := range specs {
+		count[s.ID]++
+	}
 
 	var issues []Issue
 	for id, n := range count {
 		if n > 1 {
 			issues = append(issues, Issue{
 				Code:    "duplicate_id",
-				Message: "id " + id + " is used by more than one file across work/ and cards/",
+				Message: "id " + id + " is used by more than one file across work/, cards/ and specs/",
 			})
 		}
 	}
@@ -252,7 +319,7 @@ func duplicateIDIssues(workitems []ledger.Workitem, cards []ledger.Card) []Issue
 // orphanRefIssues flags blocked_by/discovered_from/superseded_by
 // references that name an id present in neither the active ledger nor
 // the closed-item log.
-func orphanRefIssues(workitems []ledger.Workitem, cards []ledger.Card, activeIDs, closedIDs map[string]struct{}) []Issue {
+func orphanRefIssues(workitems []ledger.Workitem, cards []ledger.Card, specs []ledger.Spec, activeIDs, closedIDs map[string]struct{}) []Issue {
 	exists := func(id string) bool {
 		if id == "" {
 			return true
@@ -289,7 +356,119 @@ func orphanRefIssues(workitems []ledger.Workitem, cards []ledger.Card, activeIDs
 			})
 		}
 	}
+	for _, s := range specs {
+		if !exists(s.SupersededBy) {
+			issues = append(issues, Issue{
+				Code:    "orphan_ref",
+				Message: "spec " + s.ID + ": superseded_by references nonexistent id " + s.SupersededBy,
+			})
+		}
+	}
 	return issues
+}
+
+// specRefIssues implements S9.4's workitem.spec checks: a reference to a
+// nonexistent spec is an ERROR (spec_not_found); a reference to a spec
+// that has since been superseded is a WARNING (spec_superseded), since
+// the workitem can still proceed but should be re-pointed.
+func specRefIssues(workitems []ledger.Workitem, specs []ledger.Spec) (errors, warnings []Issue) {
+	byID := make(map[string]ledger.Spec, len(specs))
+	for _, s := range specs {
+		byID[s.ID] = s
+	}
+
+	for _, w := range workitems {
+		if w.Spec == "" {
+			continue
+		}
+		s, ok := byID[w.Spec]
+		if !ok {
+			errors = append(errors, Issue{
+				Code:    "spec_not_found",
+				Message: "workitem " + w.ID + ": spec references nonexistent id " + w.Spec,
+			})
+			continue
+		}
+		if s.Status == "superseded" {
+			warnings = append(warnings, Issue{
+				Code:    "spec_superseded",
+				Message: "workitem " + w.ID + ": spec " + w.Spec + " is superseded by " + s.SupersededBy,
+			})
+		}
+	}
+	return errors, warnings
+}
+
+// oldDraftSpecIssues flags draft specs (S9.4) older than
+// specDraftMaxAgeDays: a draft is meant to be short-lived, either
+// activated (anchored to a decision) or abandoned.
+func oldDraftSpecIssues(specs []ledger.Spec, now time.Time) []Issue {
+	cutoff := now.AddDate(0, 0, -specDraftMaxAgeDays)
+
+	var issues []Issue
+	for _, s := range specs {
+		if s.Status != "draft" {
+			continue
+		}
+		created, err := time.Parse("2006-01-02", s.Created)
+		if err != nil {
+			continue
+		}
+		if created.Before(cutoff) {
+			issues = append(issues, Issue{
+				Code:    "old_draft_spec",
+				Message: "spec " + s.ID + " (" + s.Title + ") has been a draft since " + s.Created + ", older than " + strconv.Itoa(specDraftMaxAgeDays) + " days",
+			})
+		}
+	}
+	return issues
+}
+
+// decisionIssues implements S9.8's decision-traceability checks: an
+// active spec must carry at least one decisions entry (ERROR, since this
+// can only happen from a hand-edit — `spec activate` itself refuses an
+// empty list); each entry must resolve, either to an existing decision
+// card (ERROR if missing or not type "decision"; WARNING "spec may need
+// revision" if the card is superseded) or to a path that exists on disk
+// (ERROR if not).
+func decisionIssues(root string, specs []ledger.Spec, cardsByID map[string]ledger.Card) (errors, warnings []Issue) {
+	for _, s := range specs {
+		if s.Status == "superseded" {
+			continue
+		}
+		if s.Status == "active" && len(s.Decisions) == 0 {
+			errors = append(errors, Issue{
+				Code:    "spec_without_decision",
+				Message: "spec " + s.ID + " (" + s.Title + ") is active but has no linked decision",
+			})
+		}
+		for _, entry := range s.Decisions {
+			if isDecisionID(entry) {
+				card, ok := cardsByID[entry]
+				if !ok || card.Type != "decision" {
+					errors = append(errors, Issue{
+						Code:    "decision_not_found",
+						Message: "spec " + s.ID + ": decisions references nonexistent decision card " + entry,
+					})
+					continue
+				}
+				if card.Status == "superseded" {
+					warnings = append(warnings, Issue{
+						Code:    "decision_superseded",
+						Message: "spec " + s.ID + ": decision " + entry + " is superseded by " + card.SupersededBy + " — spec may need revision",
+					})
+				}
+				continue
+			}
+			if _, err := os.Stat(filepath.Join(root, entry)); err != nil {
+				errors = append(errors, Issue{
+					Code:    "decision_path_not_found",
+					Message: "spec " + s.ID + ": decisions references nonexistent path " + entry,
+				})
+			}
+		}
+	}
+	return errors, warnings
 }
 
 // cycleIssues detects cycles in the blocked_by graph among active

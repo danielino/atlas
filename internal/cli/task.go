@@ -30,7 +30,7 @@ func newTaskCmd() *cobra.Command {
 }
 
 func newTaskAddCmd() *cobra.Command {
-	var body, blockedBy, from, evidence string
+	var body, blockedBy, from, evidence, spec string
 	cmd := &cobra.Command{
 		Use:   "add <title>",
 		Short: "Create a new todo workitem",
@@ -42,6 +42,23 @@ func newTaskAddCmd() *cobra.Command {
 			root, err := requireRoot(cmd, useJSON)
 			if err != nil {
 				return err
+			}
+
+			if spec != "" {
+				linkedSpec, err := ledger.LoadSpec(root, spec)
+				if err != nil {
+					if errors.Is(err, ledger.ErrNotFound) {
+						return fail(cmd, 2, useJSON,
+							fmt.Sprintf("atlas: no such spec: %s", spec),
+							map[string]any{"error": "spec_not_found", "id": spec})
+					}
+					return failIO(cmd, useJSON, err)
+				}
+				if linkedSpec.Status == "superseded" {
+					return fail(cmd, 2, useJSON,
+						fmt.Sprintf("atlas: spec %s is superseded by %s", spec, linkedSpec.SupersededBy),
+						map[string]any{"error": "spec_superseded", "id": spec, "superseded_by": linkedSpec.SupersededBy})
+				}
 			}
 
 			cfg, err := ledger.LoadConfig(root)
@@ -79,6 +96,7 @@ func newTaskAddCmd() *cobra.Command {
 				BlockedBy:      splitCSV(blockedBy),
 				DiscoveredFrom: from,
 				Evidence:       splitCSV(evidence),
+				Spec:           spec,
 				Body:           resolvedBody,
 			}
 
@@ -94,6 +112,7 @@ func newTaskAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&blockedBy, "blocked-by", "", "comma-separated ids this workitem is blocked by")
 	cmd.Flags().StringVar(&from, "from", "", "id of the task this work was discovered from")
 	cmd.Flags().StringVar(&evidence, "evidence", "", "comma-separated evidence paths")
+	cmd.Flags().StringVar(&spec, "spec", "", "id of the spec this workitem implements")
 	addJSONFlag(cmd)
 	return cmd
 }

@@ -48,4 +48,5 @@ func TestEnsureDirs_CreatesWorkAndCardsDirs(t *testing.T) {
 
 	require.DirExists(t, filepath.Join(tmp, ".atlas", "work"))
 	require.DirExists(t, filepath.Join(tmp, ".atlas", "cards"))
+	require.DirExists(t, filepath.Join(tmp, ".atlas", "specs"))
 }
