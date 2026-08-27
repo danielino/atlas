@@ -1,15 +1,25 @@
 name: Release
 
+# Computes the next SemVer tag from Conventional Commits and, if there is
+# one, tags and runs GoReleaser — all in one job/run. Per CLAUDE.md: fix ->
+# PATCH, feat -> MINOR, fix!/feat!/BREAKING CHANGE -> MAJOR; any other
+# commit type alone triggers no release.
+#
+# Tagging and releasing must happen in the SAME run: a tag pushed with the
+# default GITHUB_TOKEN does not trigger other workflows (GitHub disables
+# token-triggered recursive workflow runs), so a separate `push: tags`
+# workflow would never fire.
+
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
 
 permissions:
   contents: write
 
 jobs:
-  goreleaser:
+  release:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -17,12 +27,84 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Compute next tag
+        id: next_tag
+        run: |
+          set -euo pipefail
+
+          last_tag="$(git tag -l 'v*' --sort=-v:refname | head -1 || true)"
+          if [ -z "$last_tag" ]; then
+            base="v0.0.0"
+            range="HEAD"
+          else
+            base="$last_tag"
+            range="${last_tag}..HEAD"
+          fi
+          echo "Last tag: ${base}"
+
+          major="$(echo "${base#v}" | cut -d. -f1)"
+          minor="$(echo "${base#v}" | cut -d. -f2)"
+          patch="$(echo "${base#v}" | cut -d. -f3)"
+
+          bump="none"
+          while IFS= read -r subject; do
+            [ -z "$subject" ] && continue
+            if echo "$subject" | grep -qE '^[a-zA-Z]+(\([^)]*\))?!:' ; then
+              bump="major"; break
+            fi
+            if echo "$subject" | grep -qE '^feat(\([^)]*\))?:'; then
+              [ "$bump" != "major" ] && bump="minor"
+            elif echo "$subject" | grep -qE '^fix(\([^)]*\))?:'; then
+              [ "$bump" = "none" ] && bump="patch"
+            fi
+          done < <(git log --no-merges --format='%s' "$range")
+
+          # A footer-based "BREAKING CHANGE:" also forces major, even on a
+          # commit type that wasn't caught by the subject-line "!" check.
+          if git log --no-merges --format='%B' "$range" | grep -q 'BREAKING CHANGE:'; then
+            bump="major"
+          fi
+
+          echo "Bump: ${bump}"
+
+          case "$bump" in
+            major)
+              major=$((major + 1)); minor=0; patch=0
+              ;;
+            minor)
+              minor=$((minor + 1)); patch=0
+              ;;
+            patch)
+              patch=$((patch + 1))
+              ;;
+            none)
+              echo "No fix/feat/breaking commits since ${base}; skipping release."
+              echo "tag=" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
+
+          new_tag="v${major}.${minor}.${patch}"
+          echo "New tag: ${new_tag}"
+          echo "tag=${new_tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push tag
+        if: steps.next_tag.outputs.tag != ''
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.next_tag.outputs.tag }}" -m "${{ steps.next_tag.outputs.tag }}"
+          git push origin "${{ steps.next_tag.outputs.tag }}"
+
       - name: Set up Go
+        if: steps.next_tag.outputs.tag != ''
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
       - name: Run GoReleaser
+        if: steps.next_tag.outputs.tag != ''
         uses: goreleaser/goreleaser-action@v6
         with:
           version: latest
