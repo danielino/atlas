@@ -40,6 +40,17 @@ atlas task done <id> --summary "widget fixed"
 atlas doctor                # integrity check before committing
 ```
 
+Working from a spec (a spec must follow a decision, never invented from nothing):
+
+```sh
+atlas card add --type decision "Adopt bounded-retry workload model" \
+  --hook "Retries are capped, never infinite"
+atlas spec add "Workload execution retry semantics" --decision <decision-id>
+atlas spec activate <spec-id>              # requires the decision link above
+atlas task add "Implement retry cap" --spec <spec-id>
+atlas context <task-id>                    # includes the linked spec in full
+```
+
 ## Why ATLAS
 
 ATLAS is not a memory/retrieval system: no embeddings, no knowledge graph, no
@@ -218,7 +229,7 @@ are the built-in defaults:
 
 ```toml
 [context]
-budget_tokens = 1500     # context is degraded (RECENT, then RULES, then READY) beyond this
+budget_tokens = 1500     # context is degraded (RECENT, then SPECS, then RULES, then READY) beyond this
 recent_days = 7           # window for the RECENT section's closed items
 
 [policy]
