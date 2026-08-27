@@ -108,10 +108,9 @@ func newCardSupersedeCmd() *cobra.Command {
 				return failIO(cmd, useJSON, err)
 			}
 
-			if err := checkPolicy(cmd, root, cfg, useJSON); err != nil {
-				return err
-			}
-
+			// Validate both ids before applying policy, so a doomed
+			// invocation never emits a spurious policy warning first
+			// (consistent with card add's type-check-before-policy order).
 			old, err := ledger.LoadCard(root, oldID)
 			if err != nil {
 				if errors.Is(err, ledger.ErrNotFound) {
@@ -129,6 +128,10 @@ func newCardSupersedeCmd() *cobra.Command {
 						map[string]any{"error": "not_found", "id": newID})
 				}
 				return failIO(cmd, useJSON, err)
+			}
+
+			if err := checkPolicy(cmd, root, cfg, useJSON); err != nil {
+				return err
 			}
 
 			old.Status = "superseded"

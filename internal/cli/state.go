@@ -116,13 +116,58 @@ func renderStateText(st state.State, workitems []ledger.Workitem) string {
 }
 
 func renderStateJSON(st state.State, workitems []ledger.Workitem) ([]byte, error) {
+	items := make([]map[string]any, 0, len(workitems))
+	for _, w := range workitems {
+		items = append(items, map[string]any{
+			"id":              w.ID,
+			"title":           w.Title,
+			"status":          w.Status,
+			"created":         w.Created,
+			"blocked_by":      w.BlockedBy,
+			"discovered_from": w.DiscoveredFrom,
+			"branch":          w.Branch,
+			"evidence":        w.Evidence,
+			"summary":         w.Summary,
+			"reason":          w.Reason,
+		})
+	}
+
+	cards := make([]map[string]any, 0, len(st.ActiveCards))
+	for _, c := range st.ActiveCards {
+		cards = append(cards, map[string]any{
+			"id":            c.ID,
+			"type":          c.Type,
+			"title":         c.Title,
+			"hook":          c.Hook,
+			"created":       c.Created,
+			"evidence":      c.Evidence,
+			"superseded_by": c.SupersededBy,
+		})
+	}
+
+	elsewhere := make([]map[string]any, 0, len(st.Ground.Elsewhere))
+	for _, e := range st.Ground.Elsewhere {
+		elsewhere = append(elsewhere, map[string]any{"id": e.ID, "branch": e.Branch})
+	}
+
+	recent := st.RecentClosed
+	if recent == nil {
+		recent = []ledger.LogEntry{}
+	}
+
 	doc := map[string]any{
-		"focus":         st.Focus,
-		"workitems":     workitems,
-		"active_cards":  st.ActiveCards,
-		"ground":        st.Ground,
+		"focus":        st.Focus,
+		"workitems":    items,
+		"active_cards": cards,
+		"ground": map[string]any{
+			"branch":      st.Ground.Branch,
+			"head":        st.Ground.Head,
+			"dirty":       st.Ground.Dirty,
+			"dirty_count": st.Ground.DirtyCount,
+			"elsewhere":   elsewhere,
+		},
 		"stale":         st.Stale,
-		"recent_closed": st.RecentClosed,
+		"recent_closed": recent,
 	}
 	return json.MarshalIndent(doc, "", "  ")
 }
