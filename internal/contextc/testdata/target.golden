@@ -19,4 +19,4 @@ Related decision: see k9m2 for claim strategy.
 ## GROUND
 branch: feature/retry · HEAD: 9f8e7d6 · worktree: clean
 ## POINTERS
-Dettaglio: `atlas show <id>` · Stato completo: `atlas state` · Storia: `atlas log --grep <x>`
+Detail: `atlas show <id>` · Full state: `atlas state` · History: `atlas log --grep <x>`

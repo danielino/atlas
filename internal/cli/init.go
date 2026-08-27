@@ -41,13 +41,13 @@ const bootstrapBegin = "<!-- atlas:begin -->"
 const bootstrapEnd = "<!-- atlas:end -->"
 
 const bootstrapBody = `## ATLAS
-- A inizio sessione esegui ` + "`atlas context`" + `: l'output è lo stato corrente del progetto.
-- Prima di lavorare su un task: ` + "`atlas task start <id>`" + ` (se rifiutato: scegli un task dalla lista ready).
-- Quando finisci un task: ` + "`atlas task done <id> --summary \"una riga su cosa è cambiato\"`" + `.
-- Decisione non ovvia presa? ` + "`atlas card add --type decision \"titolo\" --hook \"sintesi di una riga\"`" + `.
-- Lavoro nuovo scoperto? ` + "`atlas task add \"titolo\" --from <id-task-corrente>`" + `.
-- Prima di chiudere la sessione: aggiorna gli stati e, se il goal è cambiato, ` + "`.atlas/focus.md`" + `.
-- Usa ` + "`--json`" + ` sui comandi di lettura. Non modificare i file in ` + "`.atlas/`" + ` a mano: usa la CLI.
+- At session start run ` + "`atlas context`" + `: its output is the current project state.
+- Before working on a task: ` + "`atlas task start <id>`" + ` (if refused: pick a task from the ready list).
+- When you finish a task: ` + "`atlas task done <id> --summary \"one line on what changed\"`" + `.
+- Made a non-obvious decision? ` + "`atlas card add --type decision \"title\" --hook \"one-line summary\"`" + `.
+- Discovered new work? ` + "`atlas task add \"title\" --from <current-task-id>`" + `.
+- Before ending the session: update task states and, if the goal changed, ` + "`.atlas/focus.md`" + `.
+- Use ` + "`--json`" + ` on read commands. Never edit files under ` + "`.atlas/`" + ` by hand: use the CLI.
 `
 
 func bootstrapBlock() string {

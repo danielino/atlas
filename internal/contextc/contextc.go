@@ -26,7 +26,7 @@ func EstimateTokens(s string) int {
 const stalenessTag = " [STALE: ledger older than last 5 commits]"
 
 // pointersLine is the fixed POINTERS footer (S5.1), verbatim.
-const pointersLine = "Dettaglio: `atlas show <id>` · Stato completo: `atlas state` · Storia: `atlas log --grep <x>`"
+const pointersLine = "Detail: `atlas show <id>` · Full state: `atlas state` · History: `atlas log --grep <x>`"
 
 func effectiveNow(now func() time.Time) time.Time {
 	if now == nil {
@@ -197,7 +197,7 @@ func renderReady(items []ledger.Workitem, shown int) string {
 		b.WriteString("- [" + w.ID + "] " + w.Title + "\n")
 	}
 	if hidden := len(items) - shown; hidden > 0 {
-		b.WriteString(fmt.Sprintf("… (+%d altri: atlas state)\n", hidden))
+		b.WriteString(fmt.Sprintf("… (+%d more: atlas state)\n", hidden))
 	}
 	return b.String()
 }
@@ -272,7 +272,7 @@ func renderGround(g state.Ground) string {
 	if len(g.Elsewhere) > 0 {
 		parts := make([]string, len(g.Elsewhere))
 		for i, e := range g.Elsewhere {
-			parts[i] = e.ID + " su " + e.Branch
+			parts[i] = e.ID + " on " + e.Branch
 		}
 		line += " · elsewhere: [" + strings.Join(parts, ", ") + "]"
 	}

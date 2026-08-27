@@ -6,7 +6,7 @@ Drive the budget ladder down through every step.
 ## READY
 - [0000] Add doctor integrity checks for orphaned blocked_by references
 - [1000] Wire cobra command surface for task lifecycle transitions
-… (+3 altri: atlas state)
+… (+3 more: atlas state)
 ## RULES
 - [k9m2] Claims live under the git common directory, never inside the
 - [p1q2] Superseded cards stay on disk for history but are excluded f
@@ -14,4 +14,4 @@ Drive the budget ladder down through every step.
 ## GROUND
 branch: feature/context · HEAD: 9f8e7d6 · worktree: clean
 ## POINTERS
-Dettaglio: `atlas show <id>` · Stato completo: `atlas state` · Storia: `atlas log --grep <x>`
+Detail: `atlas show <id>` · Full state: `atlas state` · History: `atlas log --grep <x>`

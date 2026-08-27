@@ -2,4 +2,4 @@
 ## FOCUS
 Investigate why HEAD moved without ledger updates.
 ## POINTERS
-Dettaglio: `atlas show <id>` · Stato completo: `atlas state` · Storia: `atlas log --grep <x>`
+Detail: `atlas show <id>` · Full state: `atlas state` · History: `atlas log --grep <x>`

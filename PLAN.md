@@ -124,13 +124,13 @@ Convenzioni globali: exit 0 = ok · exit 1 = errore I/O/parse · exit 2 = rifiut
 ```markdown
 <!-- atlas:begin -->
 ## ATLAS
-- A inizio sessione esegui `atlas context`: l'output è lo stato corrente del progetto.
-- Prima di lavorare su un task: `atlas task start <id>` (se rifiutato: scegli un task dalla lista ready).
-- Quando finisci un task: `atlas task done <id> --summary "una riga su cosa è cambiato"`.
-- Decisione non ovvia presa? `atlas card add --type decision "titolo" --hook "sintesi di una riga"`.
-- Lavoro nuovo scoperto? `atlas task add "titolo" --from <id-task-corrente>`.
-- Prima di chiudere la sessione: aggiorna gli stati e, se il goal è cambiato, `.atlas/focus.md`.
-- Usa `--json` sui comandi di lettura. Non modificare i file in `.atlas/` a mano: usa la CLI.
+- At session start run `atlas context`: its output is the current project state.
+- Before working on a task: `atlas task start <id>` (if refused: pick a task from the ready list).
+- When you finish a task: `atlas task done <id> --summary "one line on what changed"`.
+- Made a non-obvious decision? `atlas card add --type decision "title" --hook "one-line summary"`.
+- Discovered new work? `atlas task add "title" --from <current-task-id>`.
+- Before ending the session: update task states and, if the goal changed, `.atlas/focus.md`.
+- Use `--json` on read commands. Never edit files under `.atlas/` by hand: use the CLI.
 <!-- atlas:end -->
 ```
 
@@ -156,9 +156,9 @@ Contenuto (in inglese, per gli agenti): istruzioni per inventariare TODO/docs/AD
 - [b2c3] summary (2026-08-25)
 - git: <ultimi 5 commit oneline>
 ## GROUND
-branch: feature/x · HEAD: abc1234 · worktree: dirty(3 files) · elsewhere: [a1b2 su feature/y]
+branch: feature/x · HEAD: abc1234 · worktree: dirty(3 files) · elsewhere: [a1b2 on feature/y]
 ## POINTERS
-Dettaglio: `atlas show <id>` · Stato completo: `atlas state` · Storia: `atlas log --grep <x>`
+Detail: `atlas show <id>` · Full state: `atlas state` · History: `atlas log --grep <x>`
 ```
 **S5.2 Freshness:** stantio se mtime più recente tra i file di `.atlas/` è anteriore al timestamp del N-esimo commit più recente (N=5) E la working tree ha commit successivi. Esposta in GROUND e come tag in testata.
 **S5.3 Budget:** stima token = len(runes)/4. Se oltre `budget_tokens`, degrada in ordine inverso di priorità (priorità: FOCUS > NOW > GROUND > READY > RULES > RECENT > POINTERS): prima RECENT ridotto a 3 righe poi rimosso, poi RULES ridotte a `[id] primi 60 char`, poi READY troncata con `… (+K altri: atlas state)`. FOCUS e NOW mai rimossi.

@@ -40,6 +40,98 @@ atlas task done <id> --summary "widget fixed"
 atlas doctor                # integrity check before committing
 ```
 
+## Why ATLAS? (What It Is Not, Why It Exists, and Why It Matters)
+
+### What ATLAS Is NOT
+
+**It is not yet another general memory/retrieval system.** ATLAS doesn't extract arbitrary facts,
+encode them as vectors, or inject a ranked subset into prompts. It doesn't learn what information
+is relevant — you tell it, explicitly, by what you put in the ledger. **It has no embeddings, no
+daemon, no knowledge graph, no probabilistic retrieval.** If you want those, Mem0 or Ruflo already
+exist.
+
+**It is not a spec-driven workflow engine.** ATLAS doesn't enforce spec→plan→tasks→implement
+ceremonies. You can use it with that workflow or without it. Specs are optional. There's no
+review board, approval gate, or entanglement with your branching strategy.
+
+**It is not a full issue tracker.** It has no assignees, sprints, priorities, boards, or milestone
+forecasting. If your team needs those, ATLAS cannot be your primary system — it can coexist with one
+(referencing it via evidence links) but doesn't replace it.
+
+**It is not a solution to staleness.** ATLAS detects staleness — it flags when project state hasn't
+been updated relative to git — but it can't prevent it. An agent or human must close the loop by
+actually updating the ledger. The tool can make that cheap (one command with a summary), but not
+automatic. If the mental model breaks, ATLAS breaks with it.
+
+### The Real Problem ATLAS Solves
+
+At the start of every coding session, a coding agent pays a **reconstruction tax**:
+
+1. Read 2,000-line TODO.md files to extract 50 lines of relevance.
+2. Search through git log to find when decisions were made.
+3. Reconstruct project phase from ADRs, old specs, and implicit conventions.
+4. Re-read code to confirm what the README actually means.
+5. Load all of that *again* on the next request, because the agent can't hold context across compaction.
+
+This tax **grows with project age, not project size**. A 5-year-old repo with steady churn is worst.
+Measured across 8 sessions in production codebases: first action taken after 13 requests (median),
+with ~66.6k tokens of context already spent reconstructing state — and that state was re-read an
+average of 1.4M tokens across the session due to compaction. **Every token of reconstruction is
+paid twice: once at read, once at cache-reload.**
+
+The gap: **no existing tool answers "what is the current state of this project?" in O(1) time**. GitHub
+issues answer "what work is open?" (incomplete — no phase, no decisions, no intent). Beads answers
+"what work is ready?" (same). Spec Kit/OpenSpec answer "what are we building?" (yes, but behind
+ceremony). ADRs answer "why?" (yes, if you dig; usually buried in history). CLAUDE.md answers "what
+are the rules?" (yes — but rules are not state). **Each tool solves one piece; none gives you the brief.**
+
+### What ATLAS Actually Does (and Its Limits)
+
+ATLAS provides **one deterministic command** — `atlas context` — that answers that one question:
+*"What do I need to know to continue from where we left off?"* The answer is:
+
+- **FOCUS** (3–5 lines): What we're building and why, right now.
+- **NOW** (1–3 items): What the agent is currently working on, what's blocked and why.
+- **READY** (3–8 items): What's unblocked and waiting, in order.
+- **RULES** (5–10 hooks): Decisions that still constrain choices.
+- **RECENT** (3–5 lines): Summary of work closed in the last 7 days — bridge between sessions.
+- **GROUND** (3 lines): What branch, what state, whether the ledger is stale.
+- **POINTERS** (2 lines): How to dig deeper.
+
+All of that is **~1,500 tokens** in the common case, vs. the ~50k tokens the agent was burning to reconstruct it.
+**The ledger is small enough to fit in cache**, so it can be included in every request. The brief is made of
+**pointers and summaries, never full dumps** — the agent reads the code just-in-time, which it's good at.
+
+**But here's the honest part:** ATLAS solves a *multiplier problem*, not the problem of coding itself.
+If your agent is making bad decisions, ATLAS gives it better context to make them *faster and cheaper*,
+but it doesn't make the decisions better. If your architecture is tangled or your team's mental model
+is fractured, ATLAS will make that visibility clearer and more painful, not fix it. **It is an amplifier,
+not a solution.**
+
+And it only works if you update it. The moment the ledger becomes stale and agents stop trusting it,
+you're left with a small frozen TODO that nobody reads — which is worse than a large living one. ATLAS'
+main failure mode is **behavioral, not technical**: keeping the ledger fresh costs less than the tax
+of not having it, but requires discipline. `atlas doctor` detects the staleness; only humans and agents
+can fix it.
+
+### Why This is Still Worth Building
+
+The reconstruction tax is real, measured, and eliminates itself at scale. **For a production codebase
+with steady churn, 10–25% reduction in per-session cost is conservative.** For LLM providers and users
+paying per token, that's material. For teams running agents in parallel, the state clarity alone
+(knowing what's already claimed, what's blocked, why) is worth the ~5 minutes of setup. And for the
+human looking at a project after a week off, `atlas context` is the difference between feeling lost
+and feeling oriented.
+
+The tool is minimal enough — no server, no daemon, ~500 lines of CLI code, plain files in git — that
+the cost of trying it is a one-line `atlas init` and a few entries in a file.
+
+Whether it's worth *not building* is also fair. If you're on a small team, working synchronously,
+with a project that never ages, or with agents that somehow stay oriented without it — you don't need
+ATLAS. Honest answer: **most projects don't**. The ones that do know they do.
+
+---
+
 ## Command reference
 
 Every read command and every semantic refusal supports `--json`. All

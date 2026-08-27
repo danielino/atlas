@@ -105,7 +105,7 @@ func renderStateText(st state.State, workitems []ledger.Workitem) string {
 		if len(st.Ground.Elsewhere) > 0 {
 			parts := make([]string, len(st.Ground.Elsewhere))
 			for i, e := range st.Ground.Elsewhere {
-				parts[i] = e.ID + " su " + e.Branch
+				parts[i] = e.ID + " on " + e.Branch
 			}
 			line += " · elsewhere: [" + strings.Join(parts, ", ") + "]"
 		}

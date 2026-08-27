@@ -128,7 +128,7 @@ func TestRender_DegradesReadyTruncation(t *testing.T) {
 	s := overBudgetState()
 	dg := degradeState{recentLines: 0, rulesTruncated: true, readyShown: 2}
 	stepReady := renderText(s, fixedNow()(), dg)
-	require.Contains(t, stepReady, "… (+3 altri: atlas state)")
+	require.Contains(t, stepReady, "… (+3 more: atlas state)")
 
 	cfg := defaultCfg()
 	cfg.Context.BudgetTokens = EstimateTokens(stepReady)
