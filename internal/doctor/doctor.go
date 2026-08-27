@@ -129,6 +129,7 @@ func Run(root string, cfg ledger.Config, opts Options) (Report, error) {
 	report.Errors = append(report.Errors, orphanRefIssues(workitems, cards, specs, activeIDs, closedIDs)...)
 	report.Errors = append(report.Errors, cycleIssues(workitems)...)
 	report.Errors = append(report.Errors, doneInWorkIssues(workitems)...)
+	report.Errors = append(report.Errors, resurrectedWorkitemIssues(workitems, logEntries)...)
 	report.Errors = append(report.Errors, missingSummaryIssues(logEntries)...)
 
 	specErrors, specWarnings := specRefIssues(workitems, specs)
@@ -561,6 +562,38 @@ func doneInWorkIssues(workitems []ledger.Workitem) []Issue {
 				Message: "workitem " + w.ID + " has status done but is still in work/ (should have been compacted by `atlas task done`)",
 			})
 		}
+	}
+	return issues
+}
+
+// resurrectedWorkitemIssues catches a workitem file that is active in
+// work/ while its id already has a `task done` entry in log.jsonl: the
+// closed-and-active states can only coexist if a merge brought back a
+// stale (pre-close) copy of the file — a `git merge` never consults
+// claims, so this is the one corruption mode nothing else in the
+// pipeline stops (SPEC.md S9.8 has no equivalent for tasks; this is
+// that check). Only "task" log entries count: a superseded card
+// deliberately stays in cards/ alongside its "card" log entry (S2),
+// which is not a resurrection.
+func resurrectedWorkitemIssues(workitems []ledger.Workitem, entries []ledger.LogEntry) []Issue {
+	closedTaskIDs := make(map[string]struct{}, len(entries))
+	for _, e := range entries {
+		if e.Kind == "task" {
+			closedTaskIDs[e.ID] = struct{}{}
+		}
+	}
+
+	var issues []Issue
+	for _, w := range workitems {
+		if _, closed := closedTaskIDs[w.ID]; !closed {
+			continue
+		}
+		issues = append(issues, Issue{
+			Code: "resurrected_workitem",
+			Message: "workitem " + w.ID + " (" + w.Title + ") is active in work/ but already has a " +
+				"`task done` entry in log.jsonl — likely resurrected by a merge that brought back a " +
+				"stale copy of its file; delete .atlas/work/" + w.ID + "-*.md, it was already closed",
+		})
 	}
 	return issues
 }

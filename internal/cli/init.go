@@ -48,6 +48,7 @@ const bootstrapBody = `## ATLAS
 - Discovered new work? ` + "`atlas task add \"title\" --from <current-task-id>`" + `.
 - Working from a spec? Link tasks with ` + "`atlas task add --spec <id>`" + `; ` + "`atlas context <task-id>`" + ` will include it.
 - Before ending the session: update task states and, if the goal changed, ` + "`.atlas/focus.md`" + `.
+- After merging any branch that touches ` + "`.atlas/`" + `: run ` + "`atlas doctor`" + ` — a merge can bring back a stale, already-closed workitem (claims don't protect against this, only doctor catches it).
 - Use ` + "`--json`" + ` on read commands. Never edit files under ` + "`.atlas/`" + ` by hand: use the CLI.
 `
 

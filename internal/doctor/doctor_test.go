@@ -42,6 +42,45 @@ func TestRun_CleanRepo_NoErrorsNoWarnings(t *testing.T) {
 	require.False(t, report.HasErrors())
 }
 
+func TestRun_ResurrectedWorkitem_IsError(t *testing.T) {
+	// Reproduces the merge-resurrection incident: task a1b2 was closed
+	// (`atlas task done`, appended to log.jsonl), but a merge from a
+	// stale branch brought its work/ file back with an active status.
+	repo := setup(t)
+	require.NoError(t, ledger.SaveWorkitem(repo, ledger.Workitem{
+		ID: "a1b2", Title: "t", Status: "doing", Created: "2026-08-27",
+	}))
+	require.NoError(t, ledger.AppendLog(repo, ledger.LogEntry{
+		ID: "a1b2", Kind: "task", Summary: "done", Closed: time.Now().UTC().Format(time.RFC3339),
+	}))
+
+	report, err := Run(repo, ledger.DefaultConfig(), Options{})
+	require.NoError(t, err)
+	require.True(t, hasIssue(report.Errors, "resurrected_workitem"))
+	require.True(t, report.HasErrors())
+}
+
+func TestRun_SupersededCardAlsoInLog_NotResurrected(t *testing.T) {
+	// A superseded card deliberately stays in cards/ (S2) even though
+	// `card supersede` also appends a "card" log entry — that is not a
+	// resurrection and must never be flagged.
+	repo := setup(t)
+	require.NoError(t, ledger.SaveCard(repo, ledger.Card{
+		ID: "k9m2", Type: "decision", Title: "t", Status: "superseded",
+		SupersededBy: "x1y2", Hook: "h", Created: "2026-08-27",
+	}))
+	require.NoError(t, ledger.SaveCard(repo, ledger.Card{
+		ID: "x1y2", Type: "decision", Title: "t2", Status: "active", Hook: "h2", Created: "2026-08-27",
+	}))
+	require.NoError(t, ledger.AppendLog(repo, ledger.LogEntry{
+		ID: "k9m2", Kind: "card", SupersededBy: "x1y2", Closed: time.Now().UTC().Format(time.RFC3339),
+	}))
+
+	report, err := Run(repo, ledger.DefaultConfig(), Options{})
+	require.NoError(t, err)
+	require.False(t, hasIssue(report.Errors, "resurrected_workitem"))
+}
+
 func TestRun_OrphanBlockedBy_IsError(t *testing.T) {
 	repo := setup(t)
 	require.NoError(t, ledger.SaveWorkitem(repo, ledger.Workitem{
