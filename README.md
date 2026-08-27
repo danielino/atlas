@@ -120,17 +120,17 @@ The reconstruction tax is real and measured. But its cost scales unevenly:
 
 **You don't need ATLAS if:**
 - Your team is small and synchronous (you talk every day; state is implicit).
-- Your project is under 6–12 months old and hasn't accumulated 1,000+ commits yet.
+- Your project accumulates work at human velocity (a new spec every few days, not hours).
 - You spawn agents episodically for isolated tasks, not continuously for ongoing work.
 - You have a single focused work stream (one feature, one phase) and rarely context-switch.
 - Your team doesn't use agents at all (ATLAS is designed for agent + human handoff).
 
 **ATLAS starts paying for itself when:**
-- Your codebase is 1–2+ years old with steady churn and historical baggage.
+- You're doing **continuous agent development** — a codebase that gains 50+ specs/tasks, multiple phases, and 3+ active decision domains in 2–4 weeks (not 1–2 years of team time). At that velocity, reconstruction tax emerges *in days*, not months.
 - Multiple agents work in parallel on different branches, and you need to know who owns what.
 - You have 5+ active decisions/constraints that shape new work.
-- Agents make decisions that older team members might not immediately recognize (onboarding cost).
 - You measure per-session cost in dollars, not hours — the 10–25% reduction in context burn is material.
+- Your `TODO.md` is already 100+ lines or you have 30+ open work items — the signal-to-noise ratio has degraded.
 
 For projects in the second category, `atlas context` replaces 30–60 minutes of manual state assembly with
 ~1 minute and ~1,500 tokens. The tool is minimal enough — no server, no daemon, ~500 lines of CLI code,
