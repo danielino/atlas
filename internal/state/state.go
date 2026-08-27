@@ -15,9 +15,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/dmarcocci/atlas/internal/claims"
-	"github.com/dmarcocci/atlas/internal/gitx"
-	"github.com/dmarcocci/atlas/internal/ledger"
+	"github.com/danielino/atlas/internal/claims"
+	"github.com/danielino/atlas/internal/gitx"
+	"github.com/danielino/atlas/internal/ledger"
 )
 
 // FreshnessN is the number of most-recent commits considered by the

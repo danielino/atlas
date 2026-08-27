@@ -12,8 +12,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dmarcocci/atlas/internal/ledger"
-	"github.com/dmarcocci/atlas/internal/state"
+	"github.com/danielino/atlas/internal/ledger"
+	"github.com/danielino/atlas/internal/state"
 )
 
 func newSpecCmd() *cobra.Command {

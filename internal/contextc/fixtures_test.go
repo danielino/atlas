@@ -3,8 +3,8 @@ package contextc
 import (
 	"time"
 
-	"github.com/dmarcocci/atlas/internal/ledger"
-	"github.com/dmarcocci/atlas/internal/state"
+	"github.com/danielino/atlas/internal/ledger"
+	"github.com/danielino/atlas/internal/state"
 )
 
 // fixedNow returns the injectable clock used by every golden test:

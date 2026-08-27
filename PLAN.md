@@ -11,7 +11,7 @@
 ## S0. Struttura del progetto
 
 ```
-go.mod                        # module github.com/dmarcocci/atlas
+go.mod                        # module github.com/danielino/atlas
 cmd/atlas/main.go             # entrypoint, exit code handling
 internal/ledger/              # id, frontmatter codec, workitem, card, focus, log.jsonl, config
 internal/gitx/                # wrapper subprocess git

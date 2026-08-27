@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dmarcocci/atlas/internal/testutil"
+	"github.com/danielino/atlas/internal/testutil"
 )
 
 func TestInit_CreatesExpectedLayout(t *testing.T) {

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dmarcocci/atlas/internal/gitx"
-	"github.com/dmarcocci/atlas/internal/testutil"
+	"github.com/danielino/atlas/internal/gitx"
+	"github.com/danielino/atlas/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
 

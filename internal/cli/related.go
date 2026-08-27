@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dmarcocci/atlas/internal/ledger"
+	"github.com/danielino/atlas/internal/ledger"
 )
 
 // relatedCardsFor is a small, deliberate duplication of contextc's

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dmarcocci/atlas/internal/ledger"
-	"github.com/dmarcocci/atlas/internal/state"
+	"github.com/danielino/atlas/internal/ledger"
+	"github.com/danielino/atlas/internal/state"
 	"gopkg.in/yaml.v3"
 )
 

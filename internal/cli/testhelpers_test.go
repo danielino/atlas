@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/dmarcocci/atlas/internal/testutil"
+	"github.com/danielino/atlas/internal/testutil"
 )
 
 // chdir changes the working directory for the duration of the test and

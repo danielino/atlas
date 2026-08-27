@@ -11,10 +11,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dmarcocci/atlas/internal/claims"
-	"github.com/dmarcocci/atlas/internal/gitx"
-	"github.com/dmarcocci/atlas/internal/ledger"
-	"github.com/dmarcocci/atlas/internal/state"
+	"github.com/danielino/atlas/internal/claims"
+	"github.com/danielino/atlas/internal/gitx"
+	"github.com/danielino/atlas/internal/ledger"
+	"github.com/danielino/atlas/internal/state"
 )
 
 func newTaskCmd() *cobra.Command {

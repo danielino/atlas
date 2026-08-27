@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dmarcocci/atlas/internal/testutil"
+	"github.com/danielino/atlas/internal/testutil"
 )
 
 // commitAll commits everything currently on disk so that a worktree can be

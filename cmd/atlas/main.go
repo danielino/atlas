@@ -6,7 +6,7 @@ package main
 import (
 	"os"
 
-	"github.com/dmarcocci/atlas/internal/cli"
+	"github.com/danielino/atlas/internal/cli"
 )
 
 func main() {

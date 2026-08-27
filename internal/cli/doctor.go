@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dmarcocci/atlas/internal/doctor"
-	"github.com/dmarcocci/atlas/internal/ledger"
+	"github.com/danielino/atlas/internal/doctor"
+	"github.com/danielino/atlas/internal/ledger"
 )
 
 func newDoctorCmd() *cobra.Command {

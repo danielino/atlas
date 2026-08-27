@@ -15,8 +15,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dmarcocci/atlas/internal/gitx"
-	"github.com/dmarcocci/atlas/internal/ledger"
+	"github.com/danielino/atlas/internal/gitx"
+	"github.com/danielino/atlas/internal/ledger"
 )
 
 // ExitError carries the process exit code decided by a command's RunE.

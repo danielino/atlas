@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dmarcocci/atlas/internal/testutil"
+	"github.com/danielino/atlas/internal/testutil"
 )
 
 func TestSeed_PrintsTextAndJSON(t *testing.T) {

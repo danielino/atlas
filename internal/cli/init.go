@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dmarcocci/atlas/internal/ledger"
+	"github.com/danielino/atlas/internal/ledger"
 )
 
 const focusTemplate = `<!-- ATLAS focus: 3-10 lines on where the project stands TODAY. Edit this

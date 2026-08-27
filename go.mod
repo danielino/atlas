@@ -1,4 +1,4 @@
-module github.com/dmarcocci/atlas
+module github.com/danielino/atlas
 
 go 1.25.1
 
