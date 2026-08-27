@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: build, vet, fmt, test, coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Format check
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not gofmt-ed:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Test (race)
+        run: go test ./... -race -coverprofile=cover.out
+
+      - name: Coverage gate (>= 70%)
+        run: |
+          pct="$(go tool cover -func=cover.out | tail -1 | awk '{print $3}' | tr -d '%')"
+          echo "Total coverage: ${pct}%"
+          awk -v p="$pct" 'BEGIN { if (p + 0 < 70) { print "coverage " p "% is below the 70% gate"; exit 1 } }'
