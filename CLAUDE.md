@@ -42,10 +42,32 @@ internal/testutil/  SetupRepo/SetupWorktree (temp git repos for tests)
 4. Dependencies: only cobra, yaml.v3, BurntSushi/toml, testify. Nothing else.
 5. All user-facing strings in English. Errors are semantic: exit 0 ok / 1 I/O /
    2 refusal (JSON `{"error":"<code>",...}` with `--json`) / 3 doctor issues.
-6. Commits: Conventional Commits, single line, on `main`, NO Claude attribution
-   / Co-Authored-By. Push to `origin` (github.com/danielino/atlas).
+6. Commits: Conventional Commits, single line, NO Claude attribution /
+   Co-Authored-By. Gitflow (below) governs which branch a commit lands on.
 7. After changing the CLI, reinstall the binary the user runs:
    `go build -o ~/go/bin/atlas ./cmd/atlas`.
+
+## Gitflow & release
+
+- `develop` is the default branch and the integration branch; `main` is
+  production-only. **Never commit directly to either** — `feature/<desc>`
+  off `develop`, merged back via PR; `release/<version>` off `develop`,
+  merged into both `main` and `develop`; `hotfix/<desc>` off `main`, merged
+  into both.
+- CI (`.github/workflows/ci.yml`) runs on every push/PR to `main`/`develop`:
+  build, vet, gofmt check, `go test -race`, and the 70% coverage gate. Same
+  checks a human runs locally before committing — CI just enforces them.
+- Release is fully automatic from `main`: `release-tag.yml` computes the next
+  SemVer tag from Conventional Commits since the last tag (`fix`→patch,
+  `feat`→minor, `!`/`BREAKING CHANGE`→major; any other type alone triggers no
+  release) and pushes it; the tag push triggers `release.yml`, which runs
+  GoReleaser (`.goreleaser.yaml`) to build linux/darwin/windows ×
+  amd64/arm64 binaries and publish a GitHub Release with a changelog grouped
+  by commit type. Never hand-edit a tag or a release — if the automation is
+  wrong, fix the workflow/config, don't patch around it.
+- `internal/cli.Version` is set via `-ldflags -X` at release-build time only
+  (`goreleaser`); it stays `"dev"` for `go build`/`go run` and is what
+  `atlas --version` prints.
 
 ## Conventions & gotchas
 
