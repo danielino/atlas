@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	idLength         = 4
-	idLengthFallback = 5
+	idLength          = 4
+	idLengthFallback  = 5
 	maxCollisionTries = 20
 )
 

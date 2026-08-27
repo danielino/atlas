@@ -1,5 +1,5 @@
 // Package cli implements the ATLAS command surface (PLAN.md S2): cobra
-// wiring for every command except `doctor` (F5), the exit-code convention,
+// wiring for every command including `doctor`, the exit-code convention,
 // JSON error shapes for semantic refusals, root discovery, and the
 // plan-mutation policy check.
 package cli
@@ -49,6 +49,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newCardCmd())
 	root.AddCommand(newShowCmd())
 	root.AddCommand(newLogCmd())
+	root.AddCommand(newDoctorCmd())
 
 	return root
 }

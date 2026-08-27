@@ -10,11 +10,11 @@ import (
 
 func sampleCard() Card {
 	return Card{
-		ID:      "k9m2",
-		Type:    "decision",
-		Title:   "Use O_EXCL for claims",
-		Status:  "active",
-		Hook:    "Claim = file O_EXCL in $GIT_COMMON_DIR, never a mutex",
+		ID:       "k9m2",
+		Type:     "decision",
+		Title:    "Use O_EXCL for claims",
+		Status:   "active",
+		Hook:     "Claim = file O_EXCL in $GIT_COMMON_DIR, never a mutex",
 		Created:  "2026-08-27",
 		Evidence: []string{},
 		Body:     "Context/decision/consequences go here.\n",

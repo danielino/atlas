@@ -232,3 +232,32 @@ func TestDefaultSession_UsesEnvOrHostnamePID(t *testing.T) {
 	session := DefaultSession()
 	require.NotEmpty(t, session)
 }
+
+func TestErrClaimed_Error_MentionsIDBranchAndSession(t *testing.T) {
+	err := &ErrClaimed{ID: "a1b2", Existing: Claim{Branch: "feature/x", Session: "host-1"}}
+	msg := err.Error()
+	require.Contains(t, msg, "a1b2")
+	require.Contains(t, msg, "feature/x")
+	require.Contains(t, msg, "host-1")
+}
+
+// TestManager_ZeroValueDefaults exercises the lazy defaults (now/session/
+// ttlHours) that every other test bypasses by setting Session/Now/TTLHours
+// explicitly: a bare Manager must still work, using time.Now,
+// DefaultSession() and the 24h default TTL.
+func TestManager_ZeroValueDefaults(t *testing.T) {
+	repo := testutil.SetupRepo(t)
+	commonDir, err := gitx.CommonDir(repo)
+	require.NoError(t, err)
+
+	m := &Manager{CommonDir: commonDir}
+
+	before := time.Now()
+	c, err := m.Acquire("a1b2", "feature/x")
+	require.NoError(t, err)
+	require.False(t, c.Created.Before(before))
+	require.Equal(t, DefaultSession(), c.Session)
+	require.Equal(t, defaultTTLHours, c.TTLHours)
+
+	require.NoError(t, m.Release("a1b2"))
+}
